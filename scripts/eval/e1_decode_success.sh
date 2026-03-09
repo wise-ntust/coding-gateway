@@ -17,39 +17,34 @@ trap cleanup EXIT
 
 csv_header "$CSV" "loss_pct,success_rate,config"
 
-# Configs: label:k:ratio pairs (labels only; actual coding params controlled by config files)
-CONFIGS="coding_k2r15 coding_k4r15 no_coding"
-
 for loss in 0 10 20 30 40 50 60 70; do
-    for cfg in $CONFIGS; do
-        docker compose -f "$COMPOSE_FILE" up -d --build 2>/dev/null
-        sleep 3
+    docker compose -f "$COMPOSE_FILE" up -d --build 2>/dev/null
+    sleep 3
 
-        # Inject loss on tx-node eth0 (replace if qdisc exists, add if not)
-        docker compose -f "$COMPOSE_FILE" exec tx-node \
-            tc qdisc replace dev eth0 root netem loss "${loss}%" 2>/dev/null || \
-        docker compose -f "$COMPOSE_FILE" exec tx-node \
-            tc qdisc add dev eth0 root netem loss "${loss}%" 2>/dev/null || true
+    # Inject loss on tx-node eth0: delete existing root qdisc then add netem
+    docker compose -f "$COMPOSE_FILE" exec tx-node \
+        tc qdisc del dev eth0 root 2>/dev/null || true
+    docker compose -f "$COMPOSE_FILE" exec tx-node \
+        tc qdisc add dev eth0 root netem loss "${loss}%"
 
-        sleep 1
+    sleep 1
 
-        # 200 pings; capture output even on non-zero exit
-        PING_OUT=$(docker compose -f "$COMPOSE_FILE" exec tx-node \
-            ping -c 200 -W 2 10.0.0.2 2>&1 || true)
+    # 200 pings; capture output even on non-zero exit
+    PING_OUT=$(docker compose -f "$COMPOSE_FILE" exec tx-node \
+        ping -c 200 -W 2 10.0.0.2 2>&1 || true)
 
-        # Parse "X received" from ping statistics
-        RECV=$(echo "$PING_OUT" | grep -o '[0-9]* received' | grep -o '^[0-9]*')
-        [ -z "$RECV" ] && RECV=0
+    # Parse received count — handles both BusyBox and GNU ping formats
+    RECV=$(echo "$PING_OUT" | awk '/received/{for(i=1;i<=NF;i++) if($i=="received") {print $(i-1); exit}}')
+    [ -z "$RECV" ] && RECV=0
 
-        # success_rate = received / 200 * 100
-        RATE=$(awk "BEGIN { printf \"%.1f\", ($RECV / 200.0) * 100 }")
+    # success_rate = received / 200 * 100
+    RATE=$(awk "BEGIN { printf \"%.1f\", ($RECV / 200.0) * 100 }")
 
-        echo "  loss=${loss}% config=${cfg} recv=${RECV}/200 rate=${RATE}%"
-        csv_row "$CSV" "$loss" "$RATE" "$cfg"
+    echo "  loss=${loss}% config=default recv=${RECV}/200 rate=${RATE}%"
+    csv_row "$CSV" "$loss" "$RATE" "default"
 
-        docker compose -f "$COMPOSE_FILE" down 2>/dev/null || true
-        sleep 1
-    done
+    docker compose -f "$COMPOSE_FILE" down 2>/dev/null || true
+    sleep 1
 done
 
 echo "[E1] Done. Results: $CSV"
