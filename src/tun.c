@@ -96,6 +96,8 @@ int tun_configure(const char *name, const char *addr_cidr)
         return -1;
     }
 
+    memset(&ifr, 0, sizeof(ifr));
+    strncpy(ifr.ifr_name, name, IFNAMSIZ - 1);
     if (ioctl(sock, SIOCGIFFLAGS, &ifr) < 0) {
         LOG_ERR("SIOCGIFFLAGS failed for %s", name);
         close(sock);
