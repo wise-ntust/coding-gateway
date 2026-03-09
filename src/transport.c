@@ -174,7 +174,7 @@ int transport_recv(struct transport_ctx *ctx, const fd_set *rfds,
     if (hdr->type == TYPE_DATA) {
         if (hdr->k > MAX_K)           return -1;
         if (hdr->payload_len > MAX_PAYLOAD) return -1;
-        if (n < WIRE_HDR_SIZE + hdr->k + hdr->payload_len) return -1;
+        if (n < (ssize_t)(WIRE_HDR_SIZE + (int)hdr->k + (int)hdr->payload_len)) return -1;
         memcpy(shard_out->coeffs, buf + WIRE_HDR_SIZE, hdr->k);
         memcpy(shard_out->data,   buf + WIRE_HDR_SIZE + hdr->k,
                hdr->payload_len);
@@ -182,6 +182,7 @@ int transport_recv(struct transport_ctx *ctx, const fd_set *rfds,
         return TYPE_DATA;
     }
     if (hdr->type == TYPE_PROBE || hdr->type == TYPE_PROBE_ECHO) {
+        if (n < (ssize_t)(WIRE_HDR_SIZE + 8)) return -1;  /* truncated probe */
         if (probe_ts_out) {
             uint32_t hi, lo;
             memcpy(&hi, buf + WIRE_HDR_SIZE,     4);
