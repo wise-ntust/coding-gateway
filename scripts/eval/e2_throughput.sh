@@ -33,12 +33,12 @@ for loss in 0 10 20 30 40 50; do
     sleep 1
 
     # Run iperf3 client through TUN tunnel: UDP, 10 Mbps, 15 seconds, JSON output
-    IPERF_OUT=$(docker compose -f "$COMPOSE_FILE" exec tx-node \
+    IPERF_OUT=$(docker compose -f "$COMPOSE_FILE" exec -T tx-node \
         iperf3 -c 10.0.0.2 -u -b 10M -t 15 --json 2>/dev/null || echo '{}')
 
     # Parse receiver bits_per_second: last occurrence of "bits_per_second" in JSON
-    BPS=$(echo "$IPERF_OUT" | grep -o '"bits_per_second":[0-9.e+]*' | tail -1 | \
-        grep -o '[0-9.e+]*$')
+    BPS=$(echo "$IPERF_OUT" | grep -o '"bits_per_second":[0-9.eE+-]*' | tail -1 | \
+        grep -o '[0-9.eE+-]*$')
     [ -z "$BPS" ] && BPS=0
     MBPS=$(awk "BEGIN { printf \"%.2f\", $BPS / 1000000 }")
 
