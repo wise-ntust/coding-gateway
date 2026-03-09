@@ -6,6 +6,7 @@
 static void test_load_tx(void)
 {
     struct gateway_config cfg;
+    /* Must be run from the project root: use 'make test', not 'build/test_config' directly. */
     int ret = config_load("config/loopback-tx.conf", &cfg);
     assert(ret == 0);
 

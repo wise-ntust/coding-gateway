@@ -125,6 +125,14 @@ int config_load(const char *path, struct gateway_config *cfg)
         }
     }
 
+    /* Post-parse validation: clamp values that would cause UB downstream. */
+    if (cfg->k < 1)       cfg->k = 1;
+    if (cfg->k > MAX_K)   cfg->k = MAX_K;
+    if (cfg->window_size < 1) cfg->window_size = 1;
+    if (cfg->window_size > MAX_WINDOW) cfg->window_size = MAX_WINDOW;
+    if (cfg->max_payload < 1) cfg->max_payload = 1;
+    if (cfg->max_payload > MAX_PAYLOAD) cfg->max_payload = MAX_PAYLOAD;
+
     fclose(f);
     return 0;
 }
