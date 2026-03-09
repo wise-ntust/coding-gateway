@@ -65,8 +65,13 @@ int config_load(const char *path, struct gateway_config *cfg)
                     memset(cur_path, 0, sizeof(*cur_path));
                     cur_path->weight = 1.0f;
                     cur_path->enabled = true;
-                    strncpy(cur_path->name, section + 5,
-                            sizeof(cur_path->name) - 1);
+                    {
+                        size_t nlen = strlen(section + 5);
+                        if (nlen >= sizeof(cur_path->name))
+                            nlen = sizeof(cur_path->name) - 1;
+                        memcpy(cur_path->name, section + 5, nlen);
+                        cur_path->name[nlen] = '\0';
+                    }
                 }
             } else {
                 cur_path = NULL;

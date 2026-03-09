@@ -448,7 +448,7 @@ int main(int argc, char *argv[])
                     struct path_state *ps = strategy_get_path_state(sctx, p);
                     if (ps && ps->alive) {
                         transport_send_probe(tctx, p, ts);
-                        strategy_update_probe(sctx, p, 0, false); /* count sent */
+                        strategy_get_path_state(sctx, p)->probes_sent++;
                     }
                 }
                 last_probe_tv = now_tv;

@@ -27,7 +27,7 @@ struct strategy_ctx *strategy_init(const struct gateway_config *cfg)
     ctx->path_count      = cfg->path_count;
     ctx->base_redundancy = cfg->redundancy_ratio;
     ctx->loss_threshold  = cfg->probe_loss_threshold;
-    strncpy(ctx->type, cfg->strategy_type, sizeof(ctx->type) - 1);
+    snprintf(ctx->type, sizeof(ctx->type), "%s", cfg->strategy_type);
 
     for (i = 0; i < cfg->path_count; i++) {
         ctx->paths[i].cfg            = cfg->paths[i];

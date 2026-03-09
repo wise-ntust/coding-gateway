@@ -1,3 +1,7 @@
+/* Required for struct ifreq, IFNAMSIZ, IFF_UP on musl/glibc with _POSIX_C_SOURCE */
+#ifdef __linux__
+#define _GNU_SOURCE
+#endif
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
