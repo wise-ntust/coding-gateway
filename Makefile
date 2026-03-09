@@ -1,8 +1,8 @@
 CC_NATIVE   = gcc
 CC_ZEDBOARD = arm-linux-gnueabihf-gcc
-CC_OPENWRT  = $(OPENWRT_SDK)/toolchain-arm_cortex-a9+neon_gcc-*/bin/arm-openwrt-linux-gcc
+CC_OPENWRT  = $(firstword $(wildcard $(OPENWRT_SDK)/toolchain-arm_cortex-a9+neon_gcc-*/bin/arm-openwrt-linux-gcc))
 
-CFLAGS  = -std=c99 -Wall -Wextra -Wpedantic -Iinclude
+CFLAGS  = -std=c99 -Wall -Wextra -Wpedantic -Wno-gnu-zero-variadic-macro-arguments -Iinclude
 CFLAGS += -D_POSIX_C_SOURCE=200112L
 LDFLAGS = -lm
 
@@ -28,9 +28,21 @@ TARGET_BIN = coding-gateway
 TEST_SRCS = $(wildcard src/test_*.c)
 TEST_BINS = $(patsubst src/test_%.c, build/test_%, $(TEST_SRCS))
 
-.PHONY: all clean test
+.PHONY: all native zedboard openwrt clean test
 
 all: $(TARGET_BIN)
+
+native:
+	$(MAKE)
+
+zedboard:
+	$(MAKE) TARGET=zedboard
+
+openwrt:
+ifeq ($(CC_OPENWRT),)
+	$(error OPENWRT_SDK not set or toolchain not found at $(OPENWRT_SDK)/toolchain-arm_cortex-a9+neon_gcc-*/bin/)
+endif
+	$(MAKE) CC=$(CC_OPENWRT)
 
 $(TARGET_BIN): $(OBJS)
 	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)

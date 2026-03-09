@@ -12,15 +12,16 @@
 #define MAX_PAYLOAD     1400
 #define MAX_WINDOW      16
 
-/* Log macros — always called with at least one format argument */
-#define LOG_INFO(...)  fprintf(stderr, "[INFO] " __VA_ARGS__), fprintf(stderr, "\n")
-#define LOG_WARN(...)  fprintf(stderr, "[WARN] " __VA_ARGS__), fprintf(stderr, "\n")
-#define LOG_ERR(...)   fprintf(stderr, "[ERR]  " __VA_ARGS__), fprintf(stderr, "\n")
+/* Log macros — fmt must be a string literal; ##__VA_ARGS__ is a GNU extension
+ * universally supported by GCC and Clang (the only compilers used here). */
+#define LOG_INFO(fmt, ...)  do { fprintf(stderr, "[INFO] " fmt "\n", ##__VA_ARGS__); } while (0)
+#define LOG_WARN(fmt, ...)  do { fprintf(stderr, "[WARN] " fmt "\n", ##__VA_ARGS__); } while (0)
+#define LOG_ERR(fmt, ...)   do { fprintf(stderr, "[ERR]  " fmt "\n", ##__VA_ARGS__); } while (0)
 
 #ifdef DEBUG
-#define LOG_DBG(...)   fprintf(stderr, "[DBG]  " __VA_ARGS__), fprintf(stderr, "\n")
+#define LOG_DBG(fmt, ...)   do { fprintf(stderr, "[DBG]  " fmt "\n", ##__VA_ARGS__); } while (0)
 #else
-#define LOG_DBG(...)   ((void)0)
+#define LOG_DBG(fmt, ...)   do { (void)(fmt); } while (0)
 #endif
 
 #endif /* COMMON_H */
