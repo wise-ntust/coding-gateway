@@ -1,0 +1,6 @@
+# Build artifacts
+build/
+coding-gateway
+
+# Eval results (generated; do not commit)
+scripts/eval/results/
