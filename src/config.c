@@ -39,6 +39,7 @@ int config_load(const char *path, struct gateway_config *cfg)
     strncpy(cfg->strategy_type, "fixed", sizeof(cfg->strategy_type) - 1);
     cfg->probe_interval_ms = 100;
     cfg->probe_loss_threshold = 0.3f;
+    cfg->listen_port = 7000;
 
     section[0] = '\0';
     cur_path = NULL;
@@ -89,6 +90,8 @@ int config_load(const char *path, struct gateway_config *cfg)
                     strncpy(cfg->tun_name, val, sizeof(cfg->tun_name) - 1);
                 else if (!strcmp(key, "tun_addr"))
                     strncpy(cfg->tun_addr, val, sizeof(cfg->tun_addr) - 1);
+                else if (!strcmp(key, "listen_port"))
+                    cfg->listen_port = atoi(val);
             } else if (strcmp(section, "coding") == 0) {
                 if      (!strcmp(key, "k"))
                     cfg->k = atoi(val);

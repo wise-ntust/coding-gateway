@@ -66,6 +66,14 @@ int transport_send_probe(struct transport_ctx *ctx,
                          uint64_t timestamp_us);
 
 /*
+ * Send a probe-echo packet on path[path_idx].
+ * Echoes the original timestamp_us back to the sender for RTT measurement.
+ */
+int transport_send_probe_echo(struct transport_ctx *ctx,
+                              int path_idx,
+                              uint64_t timestamp_us);
+
+/*
  * Add all receive socket fds to rfds.
  * Returns nfds (highest fd + 1) for use with select().
  */

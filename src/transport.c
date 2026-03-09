@@ -144,6 +144,25 @@ int transport_send_probe(struct transport_ctx *ctx, int path_idx,
     return send_buf(ctx, path_idx, buf, sizeof(buf));
 }
 
+int transport_send_probe_echo(struct transport_ctx *ctx, int path_idx,
+                              uint64_t timestamp_us)
+{
+    uint8_t buf[WIRE_HDR_SIZE + 8];
+    struct wire_header *hdr = (struct wire_header *)buf;
+    uint32_t hi, lo;
+
+    memset(hdr, 0, WIRE_HDR_SIZE);
+    hdr->magic   = htons(WIRE_MAGIC);
+    hdr->version = WIRE_VERSION;
+    hdr->type    = TYPE_PROBE_ECHO;
+
+    hi = htonl((uint32_t)(timestamp_us >> 32));
+    lo = htonl((uint32_t)(timestamp_us & 0xFFFFFFFFu));
+    memcpy(buf + WIRE_HDR_SIZE,     &hi, 4);
+    memcpy(buf + WIRE_HDR_SIZE + 4, &lo, 4);
+    return send_buf(ctx, path_idx, buf, sizeof(buf));
+}
+
 int transport_fill_fdset(struct transport_ctx *ctx, fd_set *rfds)
 {
     FD_SET(ctx->recv_fd, rfds);
@@ -158,10 +177,14 @@ int transport_recv(struct transport_ctx *ctx, const fd_set *rfds,
 {
     uint8_t buf[WIRE_HDR_SIZE + MAX_K + MAX_PAYLOAD];
     ssize_t n;
+    struct sockaddr_in sender;
+    socklen_t sender_len = sizeof(sender);
+    int i;
 
     if (!FD_ISSET(ctx->recv_fd, rfds)) return -1;
 
-    n = recv(ctx->recv_fd, buf, sizeof(buf), 0);
+    n = recvfrom(ctx->recv_fd, buf, sizeof(buf), 0,
+                 (struct sockaddr *)&sender, &sender_len);
     if (n < WIRE_HDR_SIZE) return -1;
 
     memcpy(hdr, buf, WIRE_HDR_SIZE);
@@ -169,7 +192,16 @@ int transport_recv(struct transport_ctx *ctx, const fd_set *rfds,
 
     hdr->block_id    = ntohl(hdr->block_id);
     hdr->payload_len = ntohs(hdr->payload_len);
+
+    /* Match sender address against configured paths; fall back to 0. */
     *path_idx = 0;
+    for (i = 0; i < ctx->path_count; i++) {
+        if (ctx->paths[i].enabled &&
+            ctx->paths[i].remote.sin_addr.s_addr == sender.sin_addr.s_addr) {
+            *path_idx = i;
+            break;
+        }
+    }
 
     if (hdr->type == TYPE_DATA) {
         if (hdr->k > MAX_K)           return -1;
