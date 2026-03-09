@@ -8,7 +8,6 @@ for script in e1_decode_success.sh e2_throughput.sh e3_blockage_recovery.sh \
               e4_adaptive_step.sh e5_overhead.sh; do
     path="$SCRIPT_DIR/$script"
     if [ -x "$path" ]; then
-        echo "=== Running $script ==="
         sh "$path" "$RESULTS_DIR"
     else
         echo "[SKIP] $script (not found or not executable)"
