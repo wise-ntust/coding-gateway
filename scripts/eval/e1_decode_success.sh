@@ -10,7 +10,7 @@ RESULTS_DIR="${1:-$SCRIPT_DIR/results}"
 mkdir -p "$RESULTS_DIR"
 CSV="$RESULTS_DIR/e1_decode_success.csv"
 
-COMPOSE_FILE="$(dirname "$SCRIPT_DIR")/docker-compose.dev.yml"
+COMPOSE_FILE="$(dirname "$(dirname "$SCRIPT_DIR")")/docker-compose.dev.yml"
 
 cleanup() { docker compose -f "$COMPOSE_FILE" down 2>/dev/null || true; }
 trap cleanup EXIT
@@ -31,7 +31,7 @@ for loss in 0 10 20 30 40 50 60 70; do
 
     # 200 pings; capture output even on non-zero exit
     PING_OUT=$(docker compose -f "$COMPOSE_FILE" exec tx-node \
-        ping -c 200 -W 2 10.0.0.2 2>&1 || true)
+        ping -c 100 -i 0.2 -W 2 10.0.0.2 2>&1 || true)
 
     # Parse "X% packet loss" — works on both GNU ping and BusyBox
     LOSS_PCT=$(echo "$PING_OUT" | grep -o '[0-9]*% packet loss' | grep -o '^[0-9]*')

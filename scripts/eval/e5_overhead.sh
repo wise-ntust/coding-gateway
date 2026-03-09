@@ -10,7 +10,7 @@ RESULTS_DIR="${1:-$SCRIPT_DIR/results}"
 mkdir -p "$RESULTS_DIR"
 CSV="$RESULTS_DIR/e5_overhead.csv"
 
-COMPOSE_FILE="$(dirname "$SCRIPT_DIR")/docker-compose.dev.yml"
+COMPOSE_FILE="$(dirname "$(dirname "$SCRIPT_DIR")")/docker-compose.dev.yml"
 
 cleanup() { docker compose -f "$COMPOSE_FILE" down 2>/dev/null || true; }
 trap cleanup EXIT
@@ -36,7 +36,9 @@ read_iface_bytes() {
 }
 
 # Snapshot byte counters before iperf3
-TUN_RX_BEFORE=$(read_iface_bytes tun0 1)
+# tun0 field 9 = TX bytes (packets leaving tx-node via TUN toward gateway)
+# eth0 field 9 = TX bytes (encoded shards sent out over the wire)
+TUN_RX_BEFORE=$(read_iface_bytes tun0 9)
 ETH_TX_BEFORE=$(read_iface_bytes eth0 9)
 
 # Run iperf3 for 30 seconds: UDP 10Mbps through TUN tunnel
@@ -44,7 +46,7 @@ docker compose -f "$COMPOSE_FILE" exec -T tx-node \
     iperf3 -c 10.0.0.2 -u -b 10M -t 30 >/dev/null 2>&1 || true
 
 # Snapshot byte counters after iperf3
-TUN_RX_AFTER=$(read_iface_bytes tun0 1)
+TUN_RX_AFTER=$(read_iface_bytes tun0 9)
 ETH_TX_AFTER=$(read_iface_bytes eth0 9)
 
 TUN_BYTES=$(( TUN_RX_AFTER - TUN_RX_BEFORE ))

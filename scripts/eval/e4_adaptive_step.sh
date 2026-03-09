@@ -12,7 +12,7 @@ mkdir -p "$RESULTS_DIR"
 CSV="$RESULTS_DIR/e4_adaptive_step.csv"
 LOG="$RESULTS_DIR/e4_gateway.log"
 
-COMPOSE_FILE="$(dirname "$SCRIPT_DIR")/docker-compose.dev.yml"
+COMPOSE_FILE="$(dirname "$(dirname "$SCRIPT_DIR")")/docker-compose.dev.yml"
 
 cleanup() {
     kill "$LOG_PID" 2>/dev/null || true

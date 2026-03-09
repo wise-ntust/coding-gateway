@@ -10,7 +10,7 @@ RESULTS_DIR="${1:-$SCRIPT_DIR/results}"
 mkdir -p "$RESULTS_DIR"
 CSV="$RESULTS_DIR/e3_blockage_recovery.csv"
 
-COMPOSE_FILE="$(dirname "$SCRIPT_DIR")/docker-compose.dev.yml"
+COMPOSE_FILE="$(dirname "$(dirname "$SCRIPT_DIR")")/docker-compose.dev.yml"
 
 cleanup() { docker compose -f "$COMPOSE_FILE" down 2>/dev/null || true; }
 trap cleanup EXIT
