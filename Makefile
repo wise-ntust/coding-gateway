@@ -50,6 +50,9 @@ $(TARGET_BIN): $(OBJS)
 build/%.o: src/%.c | build
 	$(CC) $(CFLAGS) -c -o $@ $<
 
+build/test_gf256: src/test_gf256.c build/gf256.o | build
+	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
+
 build:
 	mkdir -p build
 
