@@ -53,6 +53,9 @@ build/%.o: src/%.c | build
 build/test_gf256: src/test_gf256.c build/gf256.o | build
 	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
 
+build/test_codec: src/test_codec.c build/gf256.o build/codec.o | build
+	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
+
 build:
 	mkdir -p build
 
