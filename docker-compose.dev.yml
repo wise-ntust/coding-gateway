@@ -1,0 +1,33 @@
+services:
+  tx-node:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.test
+    cap_add:
+      - NET_ADMIN
+    devices:
+      - /dev/net/tun
+    networks:
+      testnet:
+        ipv4_address: 172.20.0.2
+    command: ["/app/coding-gateway", "--config", "/app/config/docker-tx.conf"]
+
+  rx-node:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.test
+    cap_add:
+      - NET_ADMIN
+    devices:
+      - /dev/net/tun
+    networks:
+      testnet:
+        ipv4_address: 172.20.0.3
+    command: ["/app/coding-gateway", "--config", "/app/config/docker-rx.conf"]
+
+networks:
+  testnet:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/24
