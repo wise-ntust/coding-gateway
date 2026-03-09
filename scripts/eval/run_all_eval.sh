@@ -16,4 +16,8 @@ done
 
 echo ""
 echo "Results written to $RESULTS_DIR/"
-ls "$RESULTS_DIR/"
+if [ "$(ls -A "$RESULTS_DIR" 2>/dev/null)" ]; then
+    ls "$RESULTS_DIR/"
+else
+    echo "  (no results produced)"
+fi

@@ -12,6 +12,7 @@ csv_header() {
 # Appends one data row; values joined with commas.
 csv_row() {
     _file="$1"; shift
+    [ "$#" -eq 0 ] && return
     _row=""
     for _v in "$@"; do
         [ -z "$_row" ] && _row="$_v" || _row="${_row},${_v}"
