@@ -59,6 +59,8 @@ int strategy_compute_n(struct strategy_ctx *ctx, int k)
     int n_alive = 0, n_total = 0, n, i;
     float ratio;
 
+    if (k < 1) return -1;
+
     for (i = 0; i < ctx->path_count; i++) {
         if (!ctx->paths[i].cfg.enabled) continue;
         n_total++;
@@ -96,9 +98,7 @@ void strategy_update_probe(struct strategy_ctx *ctx,
         p->rtt_ms = EWMA_ALPHA * rtt_ms + (1.0f - EWMA_ALPHA) * p->rtt_ms;
     }
 
-    observed_loss = (p->probes_sent > 0)
-        ? 1.0f - (float)p->probes_recv / (float)p->probes_sent
-        : 0.0f;
+    observed_loss = received ? 0.0f : 1.0f;
     p->loss_rate = EWMA_ALPHA * observed_loss +
                    (1.0f - EWMA_ALPHA) * p->loss_rate;
 
