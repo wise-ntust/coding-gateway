@@ -2,7 +2,7 @@ CC_NATIVE   = gcc
 CC_ZEDBOARD = arm-linux-gnueabihf-gcc
 CC_OPENWRT  = $(firstword $(wildcard $(OPENWRT_SDK)/toolchain-arm_cortex-a9+neon_gcc-*/bin/arm-openwrt-linux-gcc))
 
-CFLAGS  = -std=c99 -Wall -Wextra -Wpedantic -Wno-gnu-zero-variadic-macro-arguments -Iinclude
+CFLAGS  = -std=c99 -Wall -Wextra -Wpedantic -Iinclude
 CFLAGS += -D_POSIX_C_SOURCE=200112L
 LDFLAGS = -lm
 
