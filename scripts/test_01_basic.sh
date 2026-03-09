@@ -1,7 +1,6 @@
 #!/bin/sh
 # T01: Basic connectivity — ping through TUN tunnel with no faults.
 # Expected: PASS (5/5 packets)
-set -e
 
 COMPOSE_FILE="docker-compose.dev.yml"
 
@@ -11,4 +10,10 @@ trap cleanup EXIT
 docker compose -f "$COMPOSE_FILE" up -d --build
 sleep 3
 
-docker compose -f "$COMPOSE_FILE" exec tx-node ping -c 5 -W 2 10.0.0.2
+if docker compose -f "$COMPOSE_FILE" exec tx-node ping -c 5 -W 2 10.0.0.2; then
+    echo "[PASS] T01: Basic connectivity"
+    exit 0
+else
+    echo "[FAIL] T01: Basic connectivity"
+    exit 1
+fi
