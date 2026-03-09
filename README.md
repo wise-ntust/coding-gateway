@@ -56,27 +56,58 @@ The mesh between the two gateway nodes may consist of any combination of 60 GHz 
 
 ## How It Works
 
+### Block Formation
+
+IP packets from the TUN interface are accumulated into a block. A block is flushed for encoding when either of two conditions is met — whichever comes first:
+
+- **Count trigger:** `k` packets have been accumulated.
+- **Timeout trigger:** `block_timeout_ms` milliseconds have elapsed since the first packet in the block arrived.
+
+The timeout ensures bounded latency even under light load. Packets in a partial block are zero-padded to a uniform length before encoding.
+
 ### Encoding
 
-Given a block of `k` original packets `{P₀, P₁, ..., Pₖ₋₁}`, the encoder generates `n = k + r` coded shards. Each shard `Sᵢ` is a linear combination:
+Given a block of `k` original packets `{P₀, P₁, ..., Pₖ₋₁}`, the encoder generates `n = ⌈k × redundancy_ratio⌉` coded shards. Each shard `Sᵢ` is a linear combination:
 
 ```
 Sᵢ = c₀·P₀ ⊕ c₁·P₁ ⊕ ... ⊕ cₖ₋₁·Pₖ₋₁
 ```
 
-where `·` and `⊕` are multiplication and addition in GF(2⁸), and the coefficient vector `{c₀...cₖ₋₁}` is chosen randomly for each shard. The coefficients are transmitted alongside the shard payload in a compact header.
+where `·` and `⊕` are multiplication and addition in GF(2⁸), and the coefficient vector `{c₀...cₖ₋₁}` is chosen randomly for each coded shard. The first `k` shards are systematic (identity coefficients). The coefficients are embedded in each shard's wire header.
+
+### Wire Protocol
+
+Each shard is transmitted as a single UDP datagram with the following header:
+
+```
+Offset  Size  Field
+──────  ────  ─────────────────────────────────────────────
+0       2B    magic = 0xC0DE
+2       1B    version = 0x01
+3       1B    type: 0x01=data  0x02=probe  0x03=probe_echo
+4       4B    block_id  (big-endian, monotonically increasing)
+8       1B    shard_idx
+9       1B    k  (original packets in this block)
+10      1B    n  (total shards in this block)
+11      1B    reserved
+12      2B    payload_len  (big-endian)
+14      k B   coefficients[k]  (GF(2⁸) values)
+14+k    *     payload
+```
+
+Probe packets (`type=0x02`) carry an 8-byte microsecond timestamp as payload. The receiver echoes them back (`type=0x03`); the sender measures round-trip time and loss rate from the responses.
 
 ### Distribution
 
 Shards are distributed across available paths according to the active strategy:
 
-- **Fixed:** round-robin across enabled interfaces
-- **Weighted:** probabilistic distribution proportional to per-path quality scores
-- **Adaptive:** quality scores updated continuously from probe packets and loss measurements
+- **Fixed:** round-robin across enabled paths.
+- **Weighted:** probabilistic selection proportional to per-path `weight`.
+- **Adaptive:** weight driven by probe-measured loss rate (EWMA). When paths fail, `redundancy_ratio` is scaled up automatically so surviving paths carry the full redundancy budget. Hysteresis prevents oscillation near the loss threshold.
 
 ### Decoding
 
-The receiver buffers incoming shards. Once any `k` linearly independent shards for a given block have arrived, Gaussian elimination over GF(2⁸) recovers the original `k` packets. Shards arriving after decoding is complete are discarded.
+The receiver maintains a sliding window of `window_size` blocks. Incoming shards are placed into the corresponding window slot by `block_id`. Once any `k` linearly independent shards for a block have arrived, Gaussian elimination over GF(2⁸) recovers the original `k` packets, which are written to the TUN interface in order. Shards for blocks that fall behind the window are silently discarded.
 
 ### The GF(2⁸) Core
 
@@ -86,43 +117,48 @@ All field arithmetic is implemented via precomputed lookup tables — a 256×256
 
 ## Configuration
 
-```toml
-# coding-gateway.toml
+Configuration is a simple INI / key=value file — no external parser library required.
+
+```ini
+# coding-gateway.conf
 
 [general]
-mode = "tx"          # tx | rx | both
-tun_name = "tun0"
+mode = tx               # tx | rx | both
+tun_name = tun0
+tun_addr = 10.0.0.1/30  # gateway assigns this address to the TUN interface
 
 [coding]
-k = 3                # original shards per block
-redundancy_ratio = 1.5   # generates k * ratio coded shards
-max_block_size = 1400    # bytes, should not exceed path MTU
+k = 4                       # original packets per block (max 16)
+redundancy_ratio = 1.5      # n = ceil(k * ratio) coded shards
+block_timeout_ms = 5        # flush partial block after this many ms
+max_payload = 1400          # bytes; do not exceed path MTU
+window_size = 8             # concurrent in-flight blocks at receiver
 
 [strategy]
-type = "adaptive"    # fixed | adaptive | multipath
+type = adaptive             # fixed | weighted | adaptive
+probe_interval_ms = 100     # how often to send probe packets per path
+probe_loss_threshold = 0.3  # loss rate above which a path is marked dead
 
-[paths]
-  [[paths.link]]
-  name = "mmwave_direct"
-  interface = "eth1"
-  weight = 1.0
-  enabled = true
+[path.mmwave_direct]
+interface = eth1
+remote_ip = 192.168.1.2
+remote_port = 7000
+weight = 1.0
+enabled = true
 
-  [[paths.link]]
-  name = "mmwave_via_A"
-  interface = "eth2"
-  weight = 1.0
-  enabled = true
+[path.mmwave_via_A]
+interface = eth2
+remote_ip = 192.168.1.2
+remote_port = 7001
+weight = 1.0
+enabled = true
 
-  [[paths.link]]
-  name = "mmwave_via_C"
-  interface = "eth3"
-  weight = 1.0
-  enabled = false    # disabled = single-path mode
-
-[observability]
-metrics_port = 9090
-log_level = "info"
+[path.mmwave_via_C]
+interface = eth3
+remote_ip = 192.168.1.2
+remote_port = 7002
+weight = 1.0
+enabled = false             # disabled = excluded from shard distribution
 ```
 
 Single-path mode and multi-path mode are the same binary, the same configuration file format, and the same running process. Enabling additional paths requires only setting `enabled = true` and optionally adjusting weights.
@@ -148,28 +184,56 @@ No `./configure`. No `cmake`. No dependency resolution. A single `Makefile` with
 
 ## Getting Started
 
-### Step 1 — Verify codec correctness on localhost
+### Step 1 — Unit-test the codec on localhost
 
 ```bash
-# Terminal 1: RX mode
-./coding-gateway --config config/loopback-rx.conf
-
-# Terminal 2: TX mode
-./coding-gateway --config config/loopback-tx.conf
-
-# Terminal 3: send traffic through the TUN interface
-ping 10.0.0.2
+make test
 ```
 
-Intentionally drop shards by adjusting `drop_simulation_rate` in the config. Decoding should succeed as long as fewer than `r` shards per block are lost.
+This runs `test_gf256` (field arithmetic correctness) and `test_codec` (encode/decode with simulated shard loss). Both must pass before any other step.
 
-### Step 2 — Two machines
+### Step 2 — End-to-end test with Docker Compose
 
-Deploy the TX binary on one Linux machine and the RX binary on another. Update `[paths]` to point at the remote address. Run `iperf3` through the tunnel. Observe metrics at `:9090/metrics`.
+The fastest way to verify the full pipeline without physical hardware:
 
-### Step 3 — Deploy to ZedBoard and OpenWrt
+```bash
+./scripts/test-docker.sh
+```
 
-Cross-compile, copy the binary and config, run. The deployment procedure is identical to Step 2.
+This builds the binary inside an Alpine Linux container (musl libc — close to OpenWrt), launches TX and RX nodes on a Docker bridge network, and confirms that `ping 10.0.0.2` reaches the far end through the TUN tunnel.
+
+```bash
+# Or launch manually and inspect logs:
+docker compose -f docker-compose.dev.yml up
+```
+
+### Step 3 — Two physical machines
+
+Deploy the TX binary on one Linux machine and the RX binary on another. Update `[path.*]` blocks to point at the remote machine's IP. Run `iperf3` through the tunnel:
+
+```bash
+# On RX machine
+./coding-gateway --config config/rx.conf
+
+# On TX machine
+./coding-gateway --config config/tx.conf
+iperf3 -s &          # listen on TUN side
+iperf3 -c 10.0.0.2  # send through tunnel
+```
+
+### Step 4 — Deploy to ZedBoard and OpenWrt
+
+Cross-compile, copy the binary and config, run. The deployment procedure is identical to Step 3.
+
+```bash
+# ZedBoard
+make TARGET=zedboard
+scp coding-gateway root@zedboard:/usr/local/bin/
+
+# OpenWrt
+make TARGET=openwrt OPENWRT_SDK=/path/to/sdk
+scp coding-gateway root@router:/usr/local/bin/
+```
 
 ---
 
@@ -188,6 +252,8 @@ coding_gateway_block_latency_ms_histogram
 ```
 
 A reference Grafana dashboard is provided in `dashboards/`. The adaptive strategy reads `coding_gateway_path_loss_rate` in its control loop to adjust redundancy ratio and path weights at runtime — no restart required.
+
+> **Note:** The Prometheus exporter and Grafana dashboard are not yet implemented. See Roadmap.
 
 ---
 
