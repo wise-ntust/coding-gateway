@@ -29,29 +29,37 @@ for blockage_ms in 50 100 200 500; do
         continue
     fi
 
-    # Block all traffic on rx-node eth0
+    # Start 100 pings in background; let a few succeed before blocking
+    PING_LOG=$(mktemp)
+    docker compose -f "$COMPOSE_FILE" exec -T tx-node \
+        ping -c 100 -i 0.1 -W 1 10.0.0.2 > "$PING_LOG" 2>&1 &
+    PING_PID=$!
+    sleep 1
+
+    # Apply blockage mid-stream
     docker compose -f "$COMPOSE_FILE" exec -T rx-node \
         iptables -A INPUT -i eth0 -j DROP
 
-    # Measure: run 100 pings at 100ms interval while blocked, count lost
-    PING_OUT=$(docker compose -f "$COMPOSE_FILE" exec -T tx-node \
-        ping -c 100 -i 0.1 -W 1 10.0.0.2 2>&1 || true)
-
-    # Wait for blockage_ms then unblock
+    # Hold for blockage_ms, then unblock
     sleep "$(awk "BEGIN { printf \"%.3f\", $blockage_ms / 1000 }")"
     docker compose -f "$COMPOSE_FILE" exec -T rx-node \
         iptables -D INPUT -i eth0 -j DROP 2>/dev/null || true
 
-    # Parse packet loss % from ping output (works on BusyBox and GNU ping)
+    # Wait for ping to finish
+    wait "$PING_PID" 2>/dev/null || true
+    PING_OUT=$(cat "$PING_LOG")
+    rm -f "$PING_LOG"
+
+    # Parse packet loss % (works on BusyBox and GNU ping)
     LOSS_PCT=$(echo "$PING_OUT" | grep -o '[0-9]*% packet loss' | grep -o '^[0-9]*')
     [ -z "$LOSS_PCT" ] && LOSS_PCT=100
 
-    # Approximate gap: loss% of 100 pings × 100ms interval
-    LOST=$(awk "BEGIN { printf \"%d\", $LOSS_PCT }")
-    GAP_MS=$(awk "BEGIN { printf \"%d\", $LOST * 100 }")
+    # lost_pings = loss% of 100 total; gap_ms = lost_pings × 100ms interval
+    LOST_PINGS=$(( LOSS_PCT ))
+    GAP_MS=$(( LOST_PINGS * 100 ))
 
-    echo "  blockage=${blockage_ms}ms lost=${LOST}% gap=${GAP_MS}ms"
-    csv_row "$CSV" "$blockage_ms" "$LOST" "$GAP_MS" "default"
+    echo "  blockage=${blockage_ms}ms lost_pings=${LOST_PINGS} gap=${GAP_MS}ms"
+    csv_row "$CSV" "$blockage_ms" "$LOST_PINGS" "$GAP_MS" "default"
 
     docker compose -f "$COMPOSE_FILE" down 2>/dev/null || true
     sleep 1
