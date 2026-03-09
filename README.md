@@ -231,4 +231,4 @@ The contribution is not in the coding mathematics — GF(2⁸) RLNC is well-unde
 
 ## License
 
-MIT
+[MIT](LICENSE.md)
