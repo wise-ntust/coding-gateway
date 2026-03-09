@@ -264,8 +264,8 @@ A reference Grafana dashboard is provided in `dashboards/`. The adaptive strateg
 - [x] TUN/TAP interface
 - [x] UDP multi-path transport
 - [x] Fixed and weighted strategies
-- [ ] Adaptive strategy with loss feedback
-- [ ] Probe-based RTT and loss measurement
+- [x] Adaptive strategy with loss feedback
+- [x] Probe-based RTT and loss measurement (basic EWMA; full per-path demux is a future refinement)
 - [ ] Runtime config reload (SIGHUP)
 - [ ] Prometheus metrics exporter
 - [ ] Grafana dashboard
