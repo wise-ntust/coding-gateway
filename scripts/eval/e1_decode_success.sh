@@ -33,14 +33,12 @@ for loss in 0 10 20 30 40 50 60 70; do
     PING_OUT=$(docker compose -f "$COMPOSE_FILE" exec tx-node \
         ping -c 200 -W 2 10.0.0.2 2>&1 || true)
 
-    # Parse received count — handles both BusyBox and GNU ping formats
-    RECV=$(echo "$PING_OUT" | awk '/received/{for(i=1;i<=NF;i++) if($i=="received") {print $(i-1); exit}}')
-    [ -z "$RECV" ] && RECV=0
+    # Parse "X% packet loss" — works on both GNU ping and BusyBox
+    LOSS_PCT=$(echo "$PING_OUT" | grep -o '[0-9]*% packet loss' | grep -o '^[0-9]*')
+    [ -z "$LOSS_PCT" ] && LOSS_PCT=100
+    RATE=$(awk "BEGIN { printf \"%.1f\", 100 - $LOSS_PCT }")
 
-    # success_rate = received / 200 * 100
-    RATE=$(awk "BEGIN { printf \"%.1f\", ($RECV / 200.0) * 100 }")
-
-    echo "  loss=${loss}% config=default recv=${RECV}/200 rate=${RATE}%"
+    echo "  loss=${loss}% loss_pct=${LOSS_PCT} rate=${RATE}%"
     csv_row "$CSV" "$loss" "$RATE" "default"
 
     docker compose -f "$COMPOSE_FILE" down 2>/dev/null || true
