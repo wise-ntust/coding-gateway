@@ -42,6 +42,10 @@ void encode_block(const uint8_t src[][MAX_PAYLOAD],
  * out_len : output lengths
  *
  * Returns 0 on success, -1 if shards are linearly dependent.
+ *
+ * NOTE: out_len[i] reflects the padded payload length (equal to the block's
+ * max source packet length), not the original packet size. For IP packets,
+ * use the IP header's total-length field to determine actual data length.
  */
 int decode_block(const struct shard shards[],
                  int k,

@@ -32,6 +32,7 @@ void encode_block(const uint8_t src[][MAX_PAYLOAD],
             out[s].coeffs[s] = 1;
             memcpy(out[s].data, src[s], src_len[s]);
         } else {
+            /* Caller is responsible for seeding rand() before invoking encode_block. */
             /* Random linear combination. */
             for (i = 0; i < k; i++) {
                 out[s].coeffs[i] = (uint8_t)(rand() & 0xFF);

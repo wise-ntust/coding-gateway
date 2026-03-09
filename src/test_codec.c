@@ -74,7 +74,7 @@ static void test_insufficient_shards(void)
     uint8_t  src[MAX_K][MAX_PAYLOAD];
     uint16_t src_len[MAX_K];
     struct shard coded[MAX_N];
-    struct shard subset[MAX_K];
+    struct shard subset[MAX_K];  /* only k-1 of them used */
     uint8_t  out[MAX_K][MAX_PAYLOAD];
     uint16_t out_len[MAX_K];
     int i, ret;
@@ -83,13 +83,15 @@ static void test_insufficient_shards(void)
     make_pkts(src, src_len, k);
     encode_block((const uint8_t (*)[MAX_PAYLOAD])src, src_len, k, n, coded);
 
-    /* Only k-1 = 3 shards: should fail for k=4. */
+    /* Take the first k-1 systematic shards, then duplicate one — giving k
+     * shards that are linearly dependent (rank k-1, not full rank). */
     for (i = 0; i < k - 1; i++)
-        subset[i] = coded[i + n - (k - 1)];
+        subset[i] = coded[i];
+    subset[k - 1] = coded[0];  /* duplicate of shard 0: makes matrix singular */
 
     memset(out, 0, sizeof(out));
     ret = decode_block(subset, k, out, out_len);
-    assert(ret == -1);
+    assert(ret == -1);  /* k-1 independent shards cannot decode a k-packet block */
 }
 
 int main(void)
