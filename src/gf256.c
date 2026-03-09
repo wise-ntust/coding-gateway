@@ -1,3 +1,4 @@
+#include <assert.h>
 #include "gf256.h"
 
 static uint8_t mul_table[256][256];
@@ -13,7 +14,7 @@ void gf256_init(void)
             uint8_t bb = (uint8_t)b;
             for (int i = 0; i < 8; i++) {
                 if (bb & 1) p ^= aa;
-                int hi = aa & 0x80;
+                uint8_t hi = aa & 0x80u;
                 aa = (uint8_t)(aa << 1);
                 if (hi) aa ^= 0x1d;  /* low 8 bits of 0x11d */
                 bb >>= 1;
@@ -36,4 +37,8 @@ void gf256_init(void)
 
 uint8_t gf256_mul(uint8_t a, uint8_t b) { return mul_table[a][b]; }
 uint8_t gf256_inv(uint8_t a)            { return inv_table[a]; }
-uint8_t gf256_div(uint8_t a, uint8_t b) { return mul_table[a][inv_table[b]]; }
+uint8_t gf256_div(uint8_t a, uint8_t b)
+{
+    assert(b != 0);
+    return mul_table[a][inv_table[b]];
+}
