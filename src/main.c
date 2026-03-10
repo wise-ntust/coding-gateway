@@ -121,21 +121,39 @@ static void tx_cache_free(struct tx_block_cache *c)
 static void tx_cache_store(struct tx_block_cache *c, const struct tx_block *blk)
 {
     struct tx_cache_entry *e = &c->slots[c->write_idx];
+    uint16_t max_len = 0;
     int i;
+
     if (blk->pkt_count < 0 || blk->pkt_count > MAX_K) {
         LOG_WARN("tx_cache_store: invalid pkt_count %d, skipping", blk->pkt_count);
         return;
     }
-    e->block_id      = blk->block_id;
-    e->pkt_count     = blk->pkt_count;
-    e->cached_at_us  = now_us();
-    e->valid         = true;
+
+    /* Find max payload length across real packets. */
+    for (i = 0; i < blk->pkt_count; i++) {
+        if (blk->pkt_len[i] > max_len) max_len = blk->pkt_len[i];
+    }
+    if (max_len > MAX_PAYLOAD) max_len = MAX_PAYLOAD;
+
+    e->block_id     = blk->block_id;
+    e->pkt_count    = blk->pkt_count;
+    e->cached_at_us = now_us();
+    e->valid        = true;
+
+    /* Copy real packets; store uniform length for consistent re-encode. */
     for (i = 0; i < blk->pkt_count; i++) {
         uint16_t copy_len = blk->pkt_len[i];
         if (copy_len > MAX_PAYLOAD) copy_len = MAX_PAYLOAD;
         memcpy(e->pkts[i], blk->pkts[i], copy_len);
-        e->pkt_len[i] = copy_len;
+        e->pkt_len[i] = max_len;
     }
+    /* Zero-fill ghost slots (flush_block already padded blk->pkts, but the
+     * cache slot may have stale data from a previous block). */
+    for (i = blk->pkt_count; i < MAX_K; i++) {
+        memset(e->pkts[i], 0, max_len > 0 ? max_len : MAX_PAYLOAD);
+        e->pkt_len[i] = max_len;
+    }
+
     c->write_idx = (c->write_idx + 1) % c->size;
 }
 
@@ -658,7 +676,7 @@ int main(int argc, char *argv[])
                 /* Evict stale ARQ cache entries every probe interval */
                 if (cfg.arq_enabled && tx_cache.slots) {
                     struct path_state *ps0 = strategy_get_path_state(sctx, 0);
-                    uint64_t ttl = (ps0 && ps0->rtt_ms > 0.0f)
+                    uint64_t ttl = (ps0 && ps0->rtt_ms > 10.0f)
                         ? (uint64_t)(ps0->rtt_ms * 3000.0f)   /* rtt_ms × 1000 µs/ms × 3 = 3×RTT in µs */
                         : ARQ_CACHE_TTL_US;
                     tx_cache_evict(&tx_cache, ttl);

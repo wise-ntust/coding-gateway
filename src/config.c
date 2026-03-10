@@ -121,7 +121,7 @@ int config_load(const char *path, struct gateway_config *cfg)
             } else if (strcmp(section, "arq") == 0) {
                 if (strcmp(key, "arq_enabled") == 0)
                     cfg->arq_enabled = (strcmp(val, "true") == 0 || strcmp(val, "1") == 0);
-                if (strcmp(key, "arq_cache_size") == 0)
+                else if (strcmp(key, "arq_cache_size") == 0)
                     cfg->arq_cache_size = atoi(val);
             } else if (cur_path != NULL) {
                 if      (!strcmp(key, "interface"))
