@@ -391,13 +391,17 @@ static void rx_window_advance(struct rx_window *win, int window_size,
                     if (!win->slots[i].nack_sent) {
                         /* First timeout: send NACK and give block another window */
                         if (now_us() - win->slots[i].first_recv_us >= RX_BLOCK_TIMEOUT_US) {
-                            if (arq_enabled && tctx)
+                            if (arq_enabled && tctx) {
                                 transport_send_nack(tctx, 0, win->slots[i].block_id);
-                            win->slots[i].nack_sent    = true;
-                            win->slots[i].nack_sent_us = now_us();
-                            /* Reset first_recv_us to extend block lifetime */
-                            win->slots[i].first_recv_us = now_us();
-                            LOG_DBG("NACK sent for block %u", win->slots[i].block_id);
+                                win->slots[i].nack_sent    = true;
+                                win->slots[i].nack_sent_us = now_us();
+                                /* Reset first_recv_us to extend block lifetime */
+                                win->slots[i].first_recv_us = now_us();
+                                LOG_DBG("NACK sent for block %u", win->slots[i].block_id);
+                            } else {
+                                /* ARQ disabled: evict immediately on first timeout */
+                                expired = true;
+                            }
                         }
                     } else {
                         /* Already NACKed: evict after second timeout */
