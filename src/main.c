@@ -98,12 +98,16 @@ static long elapsed_ms(const struct timeval *start)
 /* -------------------------------------------------------------------------
  * TX block cache helpers
  * ---------------------------------------------------------------------- */
-static void tx_cache_init(struct tx_block_cache *c, int size)
+static int tx_cache_init(struct tx_block_cache *c, int size)
 {
-    c->slots     = (struct tx_cache_entry *)calloc((size_t)size,
-                                                    sizeof(*c->slots));
+    c->slots = (struct tx_cache_entry *)calloc((size_t)size, sizeof(*c->slots));
+    if (!c->slots) {
+        LOG_ERR("tx_cache_init: calloc failed (size=%d)", size);
+        return -1;
+    }
     c->size      = size;
     c->write_idx = 0;
+    return 0;
 }
 
 static void tx_cache_free(struct tx_block_cache *c)
@@ -116,13 +120,19 @@ static void tx_cache_store(struct tx_block_cache *c, const struct tx_block *blk)
 {
     struct tx_cache_entry *e = &c->slots[c->write_idx];
     int i;
+    if (blk->pkt_count < 0 || blk->pkt_count > MAX_K) {
+        LOG_WARN("tx_cache_store: invalid pkt_count %d, skipping", blk->pkt_count);
+        return;
+    }
     e->block_id      = blk->block_id;
     e->pkt_count     = blk->pkt_count;
     e->cached_at_us  = now_us();
     e->valid         = true;
     for (i = 0; i < blk->pkt_count; i++) {
-        memcpy(e->pkts[i], blk->pkts[i], blk->pkt_len[i]);
-        e->pkt_len[i] = blk->pkt_len[i];
+        uint16_t copy_len = blk->pkt_len[i];
+        if (copy_len > MAX_PAYLOAD) copy_len = MAX_PAYLOAD;
+        memcpy(e->pkts[i], blk->pkts[i], copy_len);
+        e->pkt_len[i] = copy_len;
     }
     c->write_idx = (c->write_idx + 1) % c->size;
 }
@@ -433,11 +443,18 @@ int main(int argc, char *argv[])
     rx_win.base_id = 0;
 
     /* Initialise TX block cache if ARQ enabled */
-    if (cfg.arq_enabled)
-        tx_cache_init(&tx_cache,
-                      cfg.arq_cache_size > 0
-                          ? cfg.arq_cache_size
-                          : ARQ_CACHE_SIZE_DEFAULT);
+    if (cfg.arq_enabled) {
+        int cache_size = (cfg.arq_cache_size > 0)
+                         ? cfg.arq_cache_size
+                         : ARQ_CACHE_SIZE_DEFAULT;
+        if (tx_cache_init(&tx_cache, cache_size) != 0) {
+            LOG_ERR("failed to allocate TX block cache");
+            strategy_free(sctx);
+            transport_free(tctx);
+            close(tun_fd);
+            return 1;
+        }
+    }
 
     /* Signal handling */
     {

@@ -147,6 +147,12 @@ int config_load(const char *path, struct gateway_config *cfg)
     if (cfg->window_size > MAX_WINDOW) cfg->window_size = MAX_WINDOW;
     if (cfg->max_payload < 1) cfg->max_payload = 1;
     if (cfg->max_payload > MAX_PAYLOAD) cfg->max_payload = MAX_PAYLOAD;
+    if (cfg->arq_cache_size < 1 || cfg->arq_cache_size > 256) {
+        LOG_WARN("arq_cache_size %d out of range [1,256], clamping",
+                 cfg->arq_cache_size);
+        if (cfg->arq_cache_size < 1)   cfg->arq_cache_size = 1;
+        if (cfg->arq_cache_size > 256) cfg->arq_cache_size = 256;
+    }
 
     fclose(f);
     return 0;
