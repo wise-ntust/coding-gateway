@@ -19,7 +19,7 @@ csv_header "$CSV" "blockage_ms,lost_pings,gap_ms,config"
 
 for blockage_ms in 50 100 200 500; do
     docker compose -f "$COMPOSE_FILE" up -d --build 2>/dev/null
-    sleep 3
+    sleep 8
 
     # Verify baseline connectivity
     if ! docker compose -f "$COMPOSE_FILE" exec -T tx-node \
@@ -50,8 +50,10 @@ for blockage_ms in 50 100 200 500; do
     PING_OUT=$(cat "$PING_LOG")
     rm -f "$PING_LOG"
 
-    # Parse packet loss % (works on BusyBox and GNU ping)
-    LOSS_PCT=$(echo "$PING_OUT" | grep -o '[0-9]*% packet loss' | grep -o '^[0-9]*')
+    # Parse loss% — awk handles both integer "10%" and decimal "3.33333%"
+    LOSS_PCT=$(echo "$PING_OUT" | awk '/packet loss/{
+        for(i=1;i<=NF;i++) if($i~/%/){sub(/%/,"",$i); printf "%d",int($i+0.5); exit}
+    }')
     [ -z "$LOSS_PCT" ] && LOSS_PCT=100
 
     # lost_pings = loss% of 100 total; gap_ms = lost_pings × 100ms interval

@@ -11,7 +11,7 @@ def main():
     times, losses = [], []
     with open(csv_path) as f:
         for row in csv.DictReader(f):
-            times.append(float(row['elapsed_s']))
+            times.append(float(row.get('elapsed_s') or row.get('time_s', 0)))
             losses.append(float(row['loss_pct']))
     fig, ax = plt.subplots(figsize=(3.5, 2.8))
     ax.step(times, losses, where='post', color='C3', linewidth=1.5, label='Injected loss %')

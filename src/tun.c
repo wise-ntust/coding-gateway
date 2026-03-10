@@ -114,8 +114,16 @@ int tun_configure(const char *name, const char *addr_cidr)
         return -1;
     }
 
+    /* Set MTU to MAX_PAYLOAD so that TCP MSS is negotiated below the
+     * gateway's packet buffer size; prevents silent truncation. */
+    memset(&ifr, 0, sizeof(ifr));
+    strncpy(ifr.ifr_name, name, IFNAMSIZ - 1);
+    ifr.ifr_mtu = MAX_PAYLOAD;
+    if (ioctl(sock, SIOCSIFMTU, &ifr) < 0)
+        LOG_WARN("SIOCSIFMTU failed for %s (non-fatal)", name);
+
     close(sock);
-    LOG_INFO("TUN %s configured: %s/%d", name, addr, prefix);
+    LOG_INFO("TUN %s configured: %s/%d mtu=%d", name, addr, prefix, MAX_PAYLOAD);
     return 0;
 #else
     (void)name;

@@ -34,6 +34,7 @@ struct rx_block {
     bool         received[MAX_N];
     int          recv_count;
     bool         decoded;
+    uint64_t     first_recv_us; /* time first shard arrived */
 };
 
 struct rx_window {
@@ -177,6 +178,8 @@ static void rx_window_insert(struct rx_window *win,
     blk->shards[idx] = *s;
     blk->received[idx] = true;
     blk->recv_count++;
+    if (blk->recv_count == 1)
+        blk->first_recv_us = now_us();
 }
 
 /* -------------------------------------------------------------------------
@@ -226,21 +229,45 @@ static bool try_decode_block(struct rx_block *blk, int k, int tun_fd)
 /* -------------------------------------------------------------------------
  * Advance RX window base past decoded/expired blocks
  * ---------------------------------------------------------------------- */
+/* Block eviction timeout: if a block sits undecoded for this many us,
+ * assume its remaining shards are permanently lost and advance past it.
+ * 50 ms: 5× block_timeout_ms, works for both ping (500 ms interval)
+ * and high-rate iperf3 (blocks arrive every ~11 ms at 10 Mbps). */
+#define RX_BLOCK_TIMEOUT_US 50000ULL
+
 static void rx_window_advance(struct rx_window *win, int window_size)
 {
-    /* Advance while the slot at base is decoded */
-    int i;
+    int  i;
     bool found;
     do {
         found = false;
         for (i = 0; i < window_size; i++) {
             if (win->slots[i].recv_count > 0 &&
-                win->slots[i].block_id == win->base_id &&
-                win->slots[i].decoded) {
-                memset(&win->slots[i], 0, sizeof(win->slots[i]));
+                win->slots[i].block_id == win->base_id) {
+                bool expired = !win->slots[i].decoded &&
+                               (now_us() - win->slots[i].first_recv_us
+                                >= RX_BLOCK_TIMEOUT_US);
+                if (win->slots[i].decoded || expired) {
+                    memset(&win->slots[i], 0, sizeof(win->slots[i]));
+                    win->base_id++;
+                    found = true;
+                }
+                break; /* slot found for base_id, stop searching */
+            }
+        }
+        /* No slot holds base_id — block was completely missed; skip it */
+        if (!found) {
+            bool has_newer = false;
+            for (i = 0; i < window_size; i++) {
+                if (win->slots[i].recv_count > 0 &&
+                    (int32_t)(win->slots[i].block_id - win->base_id) > 0) {
+                    has_newer = true;
+                    break;
+                }
+            }
+            if (has_newer) {
                 win->base_id++;
                 found = true;
-                break;
             }
         }
     } while (found);
