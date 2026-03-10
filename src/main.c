@@ -232,9 +232,7 @@ static void handle_nack(struct tx_block_cache *cache,
 {
     struct tx_cache_entry *e;
     struct shard           shards[MAX_N];
-    uint16_t               pkt_len_uniform[MAX_K];
-    uint16_t               max_len = 0;
-    int                    n_repair, i, path, j;
+    int                    n_repair, i, path;
 
     if (!cache || !cache->slots) return;
 
@@ -244,22 +242,14 @@ static void handle_nack(struct tx_block_cache *cache,
         return;
     }
 
-    /* Pad to uniform length (same as flush_block does) */
-    for (j = 0; j < e->pkt_count; j++)
-        if (e->pkt_len[j] > max_len) max_len = e->pkt_len[j];
-    for (j = 0; j < e->pkt_count; j++) {
-        pkt_len_uniform[j] = max_len;
-        if (e->pkt_len[j] < max_len)
-            memset(e->pkts[j] + e->pkt_len[j], 0,
-                   (size_t)(max_len - e->pkt_len[j]));
-    }
-
     /* k+1 repair shards with fresh random coefficients */
     n_repair = k + 1;
     if (n_repair > MAX_N) n_repair = MAX_N;
 
+    /* Data in cache entry is already padded (flush_block pads before caching).
+     * Use cached lengths directly — no need to recompute or re-pad. */
     encode_block((const uint8_t (*)[MAX_PAYLOAD])e->pkts,
-                 pkt_len_uniform, k, n_repair, shards);
+                 e->pkt_len, k, n_repair, shards);
 
     for (i = 0; i < n_repair; i++) {
         path = strategy_next_path(sctx);
@@ -390,17 +380,19 @@ static void rx_window_advance(struct rx_window *win, int window_size,
                 if (!win->slots[i].decoded) {
                     if (!win->slots[i].nack_sent) {
                         /* First timeout: send NACK and give block another window */
-                        if (now_us() - win->slots[i].first_recv_us >= RX_BLOCK_TIMEOUT_US) {
-                            if (arq_enabled && tctx) {
-                                transport_send_nack(tctx, 0, win->slots[i].block_id);
-                                win->slots[i].nack_sent    = true;
-                                win->slots[i].nack_sent_us = now_us();
-                                /* Reset first_recv_us to extend block lifetime */
-                                win->slots[i].first_recv_us = now_us();
-                                LOG_DBG("NACK sent for block %u", win->slots[i].block_id);
-                            } else {
-                                /* ARQ disabled: evict immediately on first timeout */
-                                expired = true;
+                        {
+                            uint64_t t = now_us();
+                            if (t - win->slots[i].first_recv_us >= RX_BLOCK_TIMEOUT_US) {
+                                if (arq_enabled && tctx) {
+                                    transport_send_nack(tctx, 0, win->slots[i].block_id);
+                                    win->slots[i].nack_sent    = true;
+                                    win->slots[i].nack_sent_us = t;
+                                    win->slots[i].first_recv_us = t;
+                                    LOG_DBG("NACK sent for block %u", win->slots[i].block_id);
+                                } else {
+                                    /* ARQ disabled: evict immediately on first timeout */
+                                    expired = true;
+                                }
                             }
                         }
                     } else {
@@ -667,7 +659,7 @@ int main(int argc, char *argv[])
                 if (cfg.arq_enabled && tx_cache.slots) {
                     struct path_state *ps0 = strategy_get_path_state(sctx, 0);
                     uint64_t ttl = (ps0 && ps0->rtt_ms > 0.0f)
-                        ? (uint64_t)(ps0->rtt_ms * 3000.0f)
+                        ? (uint64_t)(ps0->rtt_ms * 3000.0f)   /* rtt_ms × 1000 µs/ms × 3 = 3×RTT in µs */
                         : ARQ_CACHE_TTL_US;
                     tx_cache_evict(&tx_cache, ttl);
                 }
