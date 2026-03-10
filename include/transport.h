@@ -93,7 +93,7 @@ int transport_fill_fdset(struct transport_ctx *ctx, fd_set *rfds);
  * On TYPE_DATA:       fills *hdr and *shard_out; sets *path_idx.
  * On TYPE_PROBE/_ECHO: fills *hdr and *probe_ts_out; sets *path_idx.
  *
- * Returns TYPE_DATA, TYPE_PROBE, TYPE_PROBE_ECHO, or -1 on error/no data.
+ * Returns TYPE_DATA, TYPE_PROBE, TYPE_PROBE_ECHO, TYPE_NACK, or -1 on error/no data.
  */
 int transport_recv(struct transport_ctx *ctx, const fd_set *rfds,
                    struct wire_header *hdr,
