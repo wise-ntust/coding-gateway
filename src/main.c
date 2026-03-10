@@ -35,6 +35,8 @@ struct rx_block {
     int          recv_count;
     bool         decoded;
     uint64_t     first_recv_us; /* time first shard arrived */
+    bool         nack_sent;       /* true after first NACK was sent */
+    uint64_t     nack_sent_us;    /* time NACK was sent */
 };
 
 struct rx_window {
@@ -137,7 +139,6 @@ static void tx_cache_store(struct tx_block_cache *c, const struct tx_block *blk)
     c->write_idx = (c->write_idx + 1) % c->size;
 }
 
-__attribute__((unused))
 static struct tx_cache_entry *tx_cache_find(struct tx_block_cache *c,
                                              uint32_t block_id)
 {
@@ -149,7 +150,6 @@ static struct tx_cache_entry *tx_cache_find(struct tx_block_cache *c,
     return NULL;
 }
 
-__attribute__((unused))
 static void tx_cache_evict(struct tx_block_cache *c, uint64_t max_age_us)
 {
     uint64_t now = now_us();
@@ -220,6 +220,56 @@ static void flush_block(struct tx_block *blk,
     }
 
     LOG_DBG("flushed block %u: k=%d n=%d", blk->block_id, k, n);
+}
+
+/* -------------------------------------------------------------------------
+ * Handle incoming NACK: re-encode block from cache and send repair shards.
+ * ---------------------------------------------------------------------- */
+static void handle_nack(struct tx_block_cache *cache,
+                        struct transport_ctx  *tctx,
+                        struct strategy_ctx   *sctx,
+                        uint32_t block_id, int k)
+{
+    struct tx_cache_entry *e;
+    struct shard           shards[MAX_N];
+    uint16_t               pkt_len_uniform[MAX_K];
+    uint16_t               max_len = 0;
+    int                    n_repair, i, path, j;
+
+    if (!cache || !cache->slots) return;
+
+    e = tx_cache_find(cache, block_id);
+    if (!e) {
+        LOG_DBG("NACK for block %u: not in cache", block_id);
+        return;
+    }
+
+    /* Pad to uniform length (same as flush_block does) */
+    for (j = 0; j < e->pkt_count; j++)
+        if (e->pkt_len[j] > max_len) max_len = e->pkt_len[j];
+    for (j = 0; j < e->pkt_count; j++) {
+        pkt_len_uniform[j] = max_len;
+        if (e->pkt_len[j] < max_len)
+            memset(e->pkts[j] + e->pkt_len[j], 0,
+                   (size_t)(max_len - e->pkt_len[j]));
+    }
+
+    /* k+1 repair shards with fresh random coefficients */
+    n_repair = k + 1;
+    if (n_repair > MAX_N) n_repair = MAX_N;
+
+    encode_block((const uint8_t (*)[MAX_PAYLOAD])e->pkts,
+                 pkt_len_uniform, k, n_repair, shards);
+
+    for (i = 0; i < n_repair; i++) {
+        path = strategy_next_path(sctx);
+        if (path < 0) break;
+        if (transport_send_shard(tctx, path, block_id,
+                                 (uint8_t)i, (uint8_t)k, (uint8_t)n_repair,
+                                 &shards[i]) != 0)
+            LOG_WARN("NACK retransmit failed: block=%u shard=%d", block_id, i);
+    }
+    LOG_DBG("NACK handled: block=%u sent %d repair shards", block_id, n_repair);
 }
 
 /* -------------------------------------------------------------------------
@@ -326,7 +376,8 @@ static bool try_decode_block(struct rx_block *blk, int k, int tun_fd)
  * and high-rate iperf3 (blocks arrive every ~11 ms at 10 Mbps). */
 #define RX_BLOCK_TIMEOUT_US 50000ULL
 
-static void rx_window_advance(struct rx_window *win, int window_size)
+static void rx_window_advance(struct rx_window *win, int window_size,
+                              struct transport_ctx *tctx, bool arq_enabled)
 {
     int  i;
     bool found;
@@ -335,9 +386,25 @@ static void rx_window_advance(struct rx_window *win, int window_size)
         for (i = 0; i < window_size; i++) {
             if (win->slots[i].recv_count > 0 &&
                 win->slots[i].block_id == win->base_id) {
-                bool expired = !win->slots[i].decoded &&
-                               (now_us() - win->slots[i].first_recv_us
-                                >= RX_BLOCK_TIMEOUT_US);
+                bool expired = false;
+                if (!win->slots[i].decoded) {
+                    if (!win->slots[i].nack_sent) {
+                        /* First timeout: send NACK and give block another window */
+                        if (now_us() - win->slots[i].first_recv_us >= RX_BLOCK_TIMEOUT_US) {
+                            if (arq_enabled && tctx)
+                                transport_send_nack(tctx, 0, win->slots[i].block_id);
+                            win->slots[i].nack_sent    = true;
+                            win->slots[i].nack_sent_us = now_us();
+                            /* Reset first_recv_us to extend block lifetime */
+                            win->slots[i].first_recv_us = now_us();
+                            LOG_DBG("NACK sent for block %u", win->slots[i].block_id);
+                        }
+                    } else {
+                        /* Already NACKed: evict after second timeout */
+                        if (now_us() - win->slots[i].nack_sent_us >= RX_BLOCK_TIMEOUT_US)
+                            expired = true;
+                    }
+                }
                 if (win->slots[i].decoded || expired) {
                     memset(&win->slots[i], 0, sizeof(win->slots[i]));
                     win->base_id++;
@@ -552,7 +619,7 @@ int main(int argc, char *argv[])
                     if (blk != NULL)
                         try_decode_block(blk, hdr.k, tun_fd);
                 }
-                rx_window_advance(&rx_win, cfg.window_size);
+                rx_window_advance(&rx_win, cfg.window_size, tctx, cfg.arq_enabled);
             } else if (type == TYPE_PROBE) {
                 LOG_DBG("PROBE received on path %d ts=%llu",
                         path_idx, (unsigned long long)probe_ts);
@@ -568,6 +635,8 @@ int main(int argc, char *argv[])
                 strategy_update_probe(sctx, path_idx, rtt_us, true);
                 LOG_DBG("PROBE_ECHO path=%d rtt=%llu us",
                         path_idx, (unsigned long long)rtt_us);
+            } else if (type == TYPE_NACK && is_tx && cfg.arq_enabled) {
+                handle_nack(&tx_cache, tctx, sctx, hdr.block_id, cfg.k);
             }
         }
 
@@ -590,6 +659,14 @@ int main(int argc, char *argv[])
                     }
                 }
                 last_probe_tv = now_tv;
+                /* Evict stale ARQ cache entries every probe interval */
+                if (cfg.arq_enabled && tx_cache.slots) {
+                    struct path_state *ps0 = strategy_get_path_state(sctx, 0);
+                    uint64_t ttl = (ps0 && ps0->rtt_ms > 0.0f)
+                        ? (uint64_t)(ps0->rtt_ms * 3000.0f)
+                        : ARQ_CACHE_TTL_US;
+                    tx_cache_evict(&tx_cache, ttl);
+                }
             }
         }
     }
