@@ -43,6 +43,27 @@ struct rx_window {
 };
 
 /* -------------------------------------------------------------------------
+ * TX block cache: stores flushed blocks for ARQ retransmission
+ * ---------------------------------------------------------------------- */
+#define ARQ_CACHE_SIZE_DEFAULT  64
+#define ARQ_CACHE_TTL_US        300000ULL   /* 300 ms fallback if RTT unknown */
+
+struct tx_cache_entry {
+    uint32_t block_id;
+    uint8_t  pkts[MAX_K][MAX_PAYLOAD];
+    uint16_t pkt_len[MAX_K];
+    int      pkt_count;
+    uint64_t cached_at_us;
+    bool     valid;
+};
+
+struct tx_block_cache {
+    struct tx_cache_entry *slots;   /* dynamically allocated */
+    int                    size;
+    int                    write_idx;
+};
+
+/* -------------------------------------------------------------------------
  * Global running flag — set to 0 by SIGINT/SIGTERM
  * ---------------------------------------------------------------------- */
 static volatile sig_atomic_t running = 1;
@@ -75,12 +96,69 @@ static long elapsed_ms(const struct timeval *start)
 }
 
 /* -------------------------------------------------------------------------
+ * TX block cache helpers
+ * ---------------------------------------------------------------------- */
+static void tx_cache_init(struct tx_block_cache *c, int size)
+{
+    c->slots     = (struct tx_cache_entry *)calloc((size_t)size,
+                                                    sizeof(*c->slots));
+    c->size      = size;
+    c->write_idx = 0;
+}
+
+static void tx_cache_free(struct tx_block_cache *c)
+{
+    free(c->slots);
+    c->slots = NULL;
+}
+
+static void tx_cache_store(struct tx_block_cache *c, const struct tx_block *blk)
+{
+    struct tx_cache_entry *e = &c->slots[c->write_idx];
+    int i;
+    e->block_id      = blk->block_id;
+    e->pkt_count     = blk->pkt_count;
+    e->cached_at_us  = now_us();
+    e->valid         = true;
+    for (i = 0; i < blk->pkt_count; i++) {
+        memcpy(e->pkts[i], blk->pkts[i], blk->pkt_len[i]);
+        e->pkt_len[i] = blk->pkt_len[i];
+    }
+    c->write_idx = (c->write_idx + 1) % c->size;
+}
+
+__attribute__((unused))
+static struct tx_cache_entry *tx_cache_find(struct tx_block_cache *c,
+                                             uint32_t block_id)
+{
+    int i;
+    for (i = 0; i < c->size; i++) {
+        if (c->slots[i].valid && c->slots[i].block_id == block_id)
+            return &c->slots[i];
+    }
+    return NULL;
+}
+
+__attribute__((unused))
+static void tx_cache_evict(struct tx_block_cache *c, uint64_t max_age_us)
+{
+    uint64_t now = now_us();
+    int i;
+    for (i = 0; i < c->size; i++) {
+        if (c->slots[i].valid &&
+            (now - c->slots[i].cached_at_us) >= max_age_us)
+            c->slots[i].valid = false;
+    }
+}
+
+/* -------------------------------------------------------------------------
  * Flush the TX block: encode and send all shards via strategy
  * ---------------------------------------------------------------------- */
 static void flush_block(struct tx_block *blk,
                         struct transport_ctx *tctx,
                         struct strategy_ctx  *sctx,
-                        int k)
+                        int k,
+                        struct tx_block_cache *cache)
 {
     struct shard shards[MAX_N];
     int n, i, path;
@@ -114,6 +192,9 @@ static void flush_block(struct tx_block *blk,
 
     encode_block((const uint8_t (*)[MAX_PAYLOAD])blk->pkts,
                  blk->pkt_len, k, n, shards);
+
+    if (cache)
+        tx_cache_store(cache, blk);
 
     for (i = 0; i < n; i++) {
         path = strategy_next_path(sctx);
@@ -295,6 +376,10 @@ int main(int argc, char *argv[])
     /* RX state */
     struct rx_window rx_win;
 
+    /* TX block cache (ARQ) */
+    struct tx_block_cache tx_cache;
+    memset(&tx_cache, 0, sizeof(tx_cache));
+
     if (argc < 3 || strcmp(argv[1], "--config") != 0) {
         fprintf(stderr, "usage: coding-gateway --config <path>\n");
         return 1;
@@ -346,6 +431,13 @@ int main(int argc, char *argv[])
     /* Initialise RX window */
     memset(&rx_win, 0, sizeof(rx_win));
     rx_win.base_id = 0;
+
+    /* Initialise TX block cache if ARQ enabled */
+    if (cfg.arq_enabled)
+        tx_cache_init(&tx_cache,
+                      cfg.arq_cache_size > 0
+                          ? cfg.arq_cache_size
+                          : ARQ_CACHE_SIZE_DEFAULT);
 
     /* Signal handling */
     {
@@ -407,7 +499,8 @@ int main(int argc, char *argv[])
                 }
 
                 if (tx.pkt_count >= cfg.k) {
-                    flush_block(&tx, tctx, sctx, cfg.k);
+                    flush_block(&tx, tctx, sctx, cfg.k,
+                                cfg.arq_enabled ? &tx_cache : NULL);
                     memset(&tx, 0, sizeof(tx));
                     tx.block_id = next_block_id++;
                 }
@@ -417,7 +510,8 @@ int main(int argc, char *argv[])
         /* ---- TX: block timeout flush --------------------------------- */
         if (is_tx && tx.pkt_count > 0) {
             if (elapsed_ms(&tx.first_pkt_time) >= (long)cfg.block_timeout_ms) {
-                flush_block(&tx, tctx, sctx, cfg.k);
+                flush_block(&tx, tctx, sctx, cfg.k,
+                            cfg.arq_enabled ? &tx_cache : NULL);
                 memset(&tx, 0, sizeof(tx));
                 tx.block_id = next_block_id++;
             }
@@ -488,7 +582,11 @@ int main(int argc, char *argv[])
 
     /* Flush any partial TX block before exit */
     if (is_tx && tx.pkt_count > 0)
-        flush_block(&tx, tctx, sctx, cfg.k);
+        flush_block(&tx, tctx, sctx, cfg.k,
+                    cfg.arq_enabled ? &tx_cache : NULL);
+
+    if (cfg.arq_enabled)
+        tx_cache_free(&tx_cache);
 
     strategy_free(sctx);
     transport_free(tctx);

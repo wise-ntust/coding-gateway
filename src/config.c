@@ -40,6 +40,8 @@ int config_load(const char *path, struct gateway_config *cfg)
     cfg->probe_interval_ms = 100;
     cfg->probe_loss_threshold = 0.3f;
     cfg->listen_port = 7000;
+    cfg->arq_enabled    = false;
+    cfg->arq_cache_size = 64;
 
     section[0] = '\0';
     cur_path = NULL;
@@ -116,6 +118,11 @@ int config_load(const char *path, struct gateway_config *cfg)
                     cfg->probe_interval_ms = atoi(val);
                 else if (!strcmp(key, "probe_loss_threshold"))
                     cfg->probe_loss_threshold = (float)atof(val);
+            } else if (strcmp(section, "arq") == 0) {
+                if (strcmp(key, "arq_enabled") == 0)
+                    cfg->arq_enabled = (strcmp(val, "true") == 0 || strcmp(val, "1") == 0);
+                if (strcmp(key, "arq_cache_size") == 0)
+                    cfg->arq_cache_size = atoi(val);
             } else if (cur_path != NULL) {
                 if      (!strcmp(key, "interface"))
                     strncpy(cur_path->interface, val,
