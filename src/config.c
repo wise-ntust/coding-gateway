@@ -42,6 +42,7 @@ int config_load(const char *path, struct gateway_config *cfg)
     cfg->listen_port = 7000;
     cfg->arq_enabled    = false;
     cfg->arq_cache_size = 64;
+    cfg->metrics_port   = 0;
 
     section[0] = '\0';
     cur_path = NULL;
@@ -99,6 +100,8 @@ int config_load(const char *path, struct gateway_config *cfg)
                     strncpy(cfg->tun_addr, val, sizeof(cfg->tun_addr) - 1);
                 else if (!strcmp(key, "listen_port"))
                     cfg->listen_port = atoi(val);
+                else if (!strcmp(key, "metrics_port"))
+                    cfg->metrics_port = atoi(val);
             } else if (strcmp(section, "coding") == 0) {
                 if      (!strcmp(key, "k"))
                     cfg->k = atoi(val);

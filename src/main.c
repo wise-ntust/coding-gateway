@@ -13,6 +13,7 @@
 #include "tun.h"
 #include "transport.h"
 #include "strategy.h"
+#include "metrics.h"
 
 /* -------------------------------------------------------------------------
  * TX side: current block being assembled from TUN reads
@@ -242,8 +243,11 @@ static void flush_block(struct tx_block *blk,
                                  &shards[i]) != 0)
             LOG_WARN("send_shard failed: block=%u shard=%d path=%d",
                      blk->block_id, i, path);
+        else
+            g_metrics.shards_sent[path]++;
     }
 
+    g_metrics.blocks_encoded++;
     LOG_DBG("flushed block %u: k=%d n=%d", blk->block_id, k, n);
 }
 
@@ -461,6 +465,7 @@ int main(int argc, char *argv[])
     struct transport_ctx  *tctx = NULL;
     struct strategy_ctx   *sctx = NULL;
     int                    tun_fd = -1;
+    int                    metrics_fd = -1;
     bool                   is_tx, is_rx;
 
     /* Probe timer state */
@@ -525,6 +530,14 @@ int main(int argc, char *argv[])
         return 1;
     }
 
+    /* Initialise metrics exporter */
+    memset(&g_metrics, 0, sizeof(g_metrics));
+    if (cfg.metrics_port > 0) {
+        metrics_fd = metrics_listen((uint16_t)cfg.metrics_port);
+        if (metrics_fd < 0)
+            LOG_WARN("metrics exporter disabled (bind failed)");
+    }
+
     /* Initialise TX block */
     memset(&tx, 0, sizeof(tx));
     tx.block_id = next_block_id++;
@@ -577,6 +590,12 @@ int main(int argc, char *argv[])
         if (is_tx) {
             FD_SET(tun_fd, &rfds);
             if (tun_fd + 1 > nfds) nfds = tun_fd + 1;
+        }
+
+        /* Metrics listener */
+        if (metrics_fd >= 0) {
+            FD_SET(metrics_fd, &rfds);
+            if (metrics_fd + 1 > nfds) nfds = metrics_fd + 1;
         }
 
         /* Compute select timeout: minimum of block_timeout and probe_interval */
@@ -662,12 +681,22 @@ do_reload:
             type = transport_recv(tctx, &rfds, &hdr, &shard_in,
                                   &probe_ts, &path_idx);
             if (type == TYPE_DATA && is_rx) {
+                g_metrics.shards_received[path_idx]++;
                 rx_window_insert(&rx_win, &hdr, &shard_in, cfg.window_size);
                 {
                     struct rx_block *blk =
                         rx_window_find(&rx_win, hdr.block_id, cfg.window_size);
-                    if (blk != NULL)
-                        try_decode_block(blk, hdr.k, tun_fd);
+                    if (blk != NULL) {
+                        bool was_decoded = blk->decoded;
+                        if (try_decode_block(blk, hdr.k, tun_fd)) {
+                            if (!was_decoded) {
+                                g_metrics.decode_success++;
+                                metrics_record_latency(now_us() - blk->first_recv_us);
+                            }
+                        } else if (blk->recv_count >= hdr.k && !blk->decoded) {
+                            g_metrics.decode_failure++;
+                        }
+                    }
                 }
                 rx_window_advance(&rx_win, cfg.window_size, tctx, cfg.arq_enabled);
             } else if (type == TYPE_PROBE) {
@@ -688,6 +717,31 @@ do_reload:
             } else if (type == TYPE_NACK && is_tx && cfg.arq_enabled) {
                 handle_nack(&tx_cache, tctx, sctx, hdr.block_id, cfg.k);
             }
+        }
+
+        /* ---- Metrics: handle /metrics HTTP requests ------------------- */
+        if (metrics_fd >= 0 && FD_ISSET(metrics_fd, &rfds)) {
+            char  pnames[MAX_PATHS][32];
+            float loss[MAX_PATHS];
+            float rtt[MAX_PATHS];
+            int   pc = strategy_path_count(sctx);
+            int   pi;
+            float cur_ratio = cfg.redundancy_ratio;
+            for (pi = 0; pi < pc; pi++) {
+                struct path_state *ps = strategy_get_path_state(sctx, pi);
+                if (ps) {
+                    memcpy(pnames[pi], ps->cfg.name, sizeof(pnames[pi]));
+                    loss[pi] = ps->loss_rate;
+                    rtt[pi]  = ps->rtt_ms;
+                } else {
+                    pnames[pi][0] = '\0';
+                    loss[pi] = 0.0f;
+                    rtt[pi]  = 0.0f;
+                }
+            }
+            metrics_handle(metrics_fd,
+                           (const char (*)[32])pnames, pc,
+                           loss, rtt, cur_ratio);
         }
 
         /* ---- TX: send probes if interval elapsed --------------------- */
@@ -732,6 +786,7 @@ do_reload:
     if (cfg.arq_enabled)
         tx_cache_free(&tx_cache);
 
+    if (metrics_fd >= 0) close(metrics_fd);
     strategy_free(sctx);
     transport_free(tctx);
     close(tun_fd);

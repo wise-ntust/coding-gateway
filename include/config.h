@@ -31,6 +31,7 @@ struct gateway_config {
     int    path_count;
     bool arq_enabled;       /* enable NACK-based ARQ (default: false) */
     int  arq_cache_size;    /* TX block cache slots (default: 64) */
+    int  metrics_port;      /* TCP port for Prometheus /metrics (0 = disabled) */
 };
 
 /*

@@ -253,7 +253,7 @@ coding_gateway_block_latency_ms_histogram
 
 A reference Grafana dashboard is provided in `dashboards/`. The adaptive strategy reads `coding_gateway_path_loss_rate` in its control loop to adjust redundancy ratio and path weights at runtime — no restart required.
 
-> **Note:** The Prometheus exporter and Grafana dashboard are not yet implemented. See Roadmap.
+> **Note:** The Grafana dashboard is not yet implemented. See Roadmap.
 
 ---
 
@@ -268,7 +268,7 @@ A reference Grafana dashboard is provided in `dashboards/`. The adaptive strateg
 - [x] Probe-based RTT and loss measurement (basic EWMA; full per-path demux is a future refinement)
 - [x] NACK-based ARQ with TX block cache (`arq_enabled` config flag)
 - [x] Runtime config reload (SIGHUP)
-- [ ] Prometheus metrics exporter
+- [x] Prometheus metrics exporter
 - [ ] Grafana dashboard
 - [ ] OpenWrt package feed
 

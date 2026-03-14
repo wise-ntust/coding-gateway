@@ -47,7 +47,7 @@ Current status (track against `README.md`):
 - [x] Adaptive strategy with loss feedback
 - [x] Probe-based RTT and loss measurement (basic EWMA; full per-path demux is a future refinement)
 - [x] Runtime config reload (SIGHUP)
-- [ ] Prometheus metrics exporter
+- [x] Prometheus metrics exporter
 - [ ] Grafana dashboard
 - [ ] OpenWrt package feed
 
