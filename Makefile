@@ -59,6 +59,12 @@ build/test_codec: src/test_codec.c build/gf256.o build/codec.o | build
 build/test_config: src/test_config.c build/config.o | build
 	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
 
+build/test_strategy: src/test_strategy.c build/strategy.o build/config.o | build
+	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
+
+build/test_transport: src/test_transport.c | build
+	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
+
 build:
 	mkdir -p build
 
