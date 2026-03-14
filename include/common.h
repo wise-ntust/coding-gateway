@@ -18,6 +18,14 @@
 #define LOG_WARN(...)  do { fprintf(stderr, "[WARN] " __VA_ARGS__); fputs("\n", stderr); } while (0)
 #define LOG_ERR(...)   do { fprintf(stderr, "[ERR]  " __VA_ARGS__); fputs("\n", stderr); } while (0)
 
+#include <sys/time.h>
+static inline uint64_t now_us(void)
+{
+    struct timeval tv;
+    gettimeofday(&tv, NULL);
+    return (uint64_t)tv.tv_sec * 1000000ULL + (uint64_t)tv.tv_usec;
+}
+
 #ifdef DEBUG
 #define LOG_DBG(...)   do { fprintf(stderr, "[DBG]  " __VA_ARGS__); fputs("\n", stderr); } while (0)
 #else

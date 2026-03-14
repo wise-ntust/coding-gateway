@@ -217,6 +217,8 @@ Seven Docker-based tests verify the full pipeline:
 | T06 | SIGHUP config reload | Config reloaded + tunnel still functional |
 | T07 | Prometheus `/metrics` endpoint | All expected metrics present |
 
+> IPv4 and IPv6 packets are both supported. The RX decode path detects the IP version from the first nibble and extracts the correct total length (IPv4 bytes 2-3, IPv6 bytes 4-5 + 40).
+
 ---
 
 ## Evaluation
