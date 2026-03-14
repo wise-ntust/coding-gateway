@@ -13,6 +13,8 @@ test_02_loss_20pct.sh
 test_03_loss_50pct.sh
 test_04_singlepath_block.sh
 test_05_multipath_failover.sh
+test_06_sighup_reload.sh
+test_07_metrics_endpoint.sh
 "
 
 passed=0

@@ -17,3 +17,10 @@ for i in 1 2 3 4 5; do
     [ -f "$csv" ] || { echo "[SKIP] E${i}: $csv not found"; continue; }
     python3 "$script" "$csv" "$pdf" && echo "[OK] E${i}: $pdf"
 done
+
+# Comparison plots (take results_dir as argument, not individual CSVs)
+for comp in plot_e1_compare plot_e2_arq_compare plot_e3_compare; do
+    script="$SCRIPT_DIR/${comp}.py"
+    [ -f "$script" ] || continue
+    python3 "$script" "$RESULTS_DIR" && echo "[OK] $comp"
+done
