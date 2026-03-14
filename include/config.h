@@ -29,7 +29,8 @@ struct gateway_config {
     int    listen_port;          /* UDP port this node binds for incoming datagrams */
     struct path_config paths[MAX_PATHS];
     int    path_count;
-    int  metrics_port;      /* TCP port for Prometheus /metrics (0 = disabled) */
+    int  metrics_port;
+    int  log_level;          /* 0=ERR, 1=WARN, 2=INFO (default), 3=DBG */      /* TCP port for Prometheus /metrics (0 = disabled) */
 };
 
 /*

@@ -60,6 +60,7 @@ int main(int argc, char *argv[])
 
     if (config_load(config_path, &cfg) != 0)
         return 1;
+    g_log_level = cfg.log_level;
 
     LOG_INFO("mode=%s tun=%s listen_port=%d k=%d",
              cfg.mode, cfg.tun_name, cfg.listen_port, cfg.k);
@@ -161,6 +162,7 @@ do_reload:
                     cfg.probe_interval_ms    = new_cfg.probe_interval_ms;
                     cfg.probe_loss_threshold = new_cfg.probe_loss_threshold;
                     cfg.block_timeout_ms     = new_cfg.block_timeout_ms;
+                    g_log_level              = new_cfg.log_level;
                     LOG_INFO("config reloaded via SIGHUP");
                 } else {
                     LOG_WARN("SIGHUP reload failed, keeping current config");

@@ -1,0 +1,16 @@
+FROM alpine:3.19 AS builder
+
+RUN apk add --no-cache gcc musl-dev make linux-headers
+
+WORKDIR /build
+COPY . .
+RUN make clean && make
+
+FROM alpine:3.19
+
+RUN apk add --no-cache iproute2 iputils
+
+COPY --from=builder /build/coding-gateway /usr/local/bin/coding-gateway
+
+ENTRYPOINT ["/usr/local/bin/coding-gateway"]
+CMD ["--config", "/etc/coding-gateway/coding-gateway.conf"]

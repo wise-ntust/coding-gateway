@@ -12,11 +12,15 @@
 #define MAX_PAYLOAD     1400
 #define MAX_WINDOW      16
 
-/* First argument must be a string literal (format string); remaining args are
- * printf-style values.  e.g. LOG_INFO("msg") or LOG_INFO("val: %d", x)  */
-#define LOG_INFO(...)  do { fprintf(stderr, "[INFO] " __VA_ARGS__); fputs("\n", stderr); } while (0)
-#define LOG_WARN(...)  do { fprintf(stderr, "[WARN] " __VA_ARGS__); fputs("\n", stderr); } while (0)
+/* Runtime log level — settable via config or SIGHUP reload.
+ * 0=ERR only, 1=+WARN, 2=+INFO (default), 3=+DBG */
+enum log_level { LOG_LVL_ERR = 0, LOG_LVL_WARN = 1, LOG_LVL_INFO = 2, LOG_LVL_DBG = 3 };
+extern int g_log_level;
+
 #define LOG_ERR(...)   do { fprintf(stderr, "[ERR]  " __VA_ARGS__); fputs("\n", stderr); } while (0)
+#define LOG_WARN(...)  do { if (g_log_level >= LOG_LVL_WARN) { fprintf(stderr, "[WARN] " __VA_ARGS__); fputs("\n", stderr); } } while (0)
+#define LOG_INFO(...)  do { if (g_log_level >= LOG_LVL_INFO) { fprintf(stderr, "[INFO] " __VA_ARGS__); fputs("\n", stderr); } } while (0)
+#define LOG_DBG(...)   do { if (g_log_level >= LOG_LVL_DBG)  { fprintf(stderr, "[DBG]  " __VA_ARGS__); fputs("\n", stderr); } } while (0)
 
 #include <sys/time.h>
 static inline uint64_t now_us(void)
@@ -25,11 +29,5 @@ static inline uint64_t now_us(void)
     gettimeofday(&tv, NULL);
     return (uint64_t)tv.tv_sec * 1000000ULL + (uint64_t)tv.tv_usec;
 }
-
-#ifdef DEBUG
-#define LOG_DBG(...)   do { fprintf(stderr, "[DBG]  " __VA_ARGS__); fputs("\n", stderr); } while (0)
-#else
-#define LOG_DBG(...)   do { if (0) fprintf(stderr, "" __VA_ARGS__); } while (0)
-#endif
 
 #endif /* COMMON_H */

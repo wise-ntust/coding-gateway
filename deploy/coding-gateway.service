@@ -1,0 +1,15 @@
+[Unit]
+Description=coding-gateway RLNC multi-path tunnel
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/coding-gateway --config /etc/coding-gateway/coding-gateway.conf
+ExecReload=/bin/kill -HUP $MAINPID
+Restart=on-failure
+RestartSec=5
+LimitNOFILE=4096
+
+[Install]
+WantedBy=multi-user.target

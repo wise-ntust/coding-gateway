@@ -5,6 +5,8 @@
 #include "config.h"
 #include "common.h"
 
+int g_log_level = LOG_LVL_INFO;
+
 static char *trim(char *s)
 {
     char *end;
@@ -41,6 +43,7 @@ int config_load(const char *path, struct gateway_config *cfg)
     cfg->probe_loss_threshold = 0.3f;
     cfg->listen_port = 7000;
     cfg->metrics_port   = 0;
+    cfg->log_level      = 2;
 
     section[0] = '\0';
     cur_path = NULL;
@@ -100,6 +103,8 @@ int config_load(const char *path, struct gateway_config *cfg)
                     cfg->listen_port = atoi(val);
                 else if (!strcmp(key, "metrics_port"))
                     cfg->metrics_port = atoi(val);
+                else if (!strcmp(key, "log_level"))
+                    cfg->log_level = atoi(val);
             } else if (strcmp(section, "coding") == 0) {
                 if      (!strcmp(key, "k"))
                     cfg->k = atoi(val);
