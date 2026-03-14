@@ -7,6 +7,7 @@
 #include "common.h"
 #include "transport.h"
 #include "strategy.h"
+#include "crypto.h"
 
 struct tx_block {
     uint32_t       block_id;
@@ -25,10 +26,11 @@ bool tx_block_add_pkt(struct tx_block *blk, const uint8_t *pkt,
 /* Returns true if block has packets and timeout has elapsed. */
 bool tx_block_needs_flush(const struct tx_block *blk, int timeout_ms);
 
-/* Encode and send all shards via strategy. */
+/* Encode and send all shards via strategy. Encrypts shard payloads if crypto enabled. */
 void tx_block_flush(struct tx_block *blk,
                     struct transport_ctx *tctx,
                     struct strategy_ctx *sctx,
-                    int k);
+                    int k,
+                    const struct crypto_ctx *crypto);
 
 #endif /* TX_H */

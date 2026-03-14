@@ -3,6 +3,7 @@
 #include "tx.h"
 #include "codec.h"
 #include "metrics.h"
+#include "crypto.h"
 
 void tx_block_init(struct tx_block *blk, uint32_t block_id)
 {
@@ -38,7 +39,8 @@ bool tx_block_needs_flush(const struct tx_block *blk, int timeout_ms)
 void tx_block_flush(struct tx_block *blk,
                     struct transport_ctx *tctx,
                     struct strategy_ctx *sctx,
-                    int k)
+                    int k,
+                    const struct crypto_ctx *crypto)
 {
     struct shard shards[MAX_N];
     int n, i, path;
@@ -72,6 +74,14 @@ void tx_block_flush(struct tx_block *blk,
 
     encode_block((const uint8_t (*)[MAX_PAYLOAD])blk->pkts,
                  blk->pkt_len, k, n, shards);
+
+    /* Encrypt shard payloads if crypto enabled */
+    if (crypto && crypto->enabled) {
+        for (i = 0; i < n; i++) {
+            uint64_t nonce = ((uint64_t)blk->block_id << 8) | (uint64_t)i;
+            crypto_xor(crypto, shards[i].data, shards[i].len, nonce);
+        }
+    }
 
     for (i = 0; i < n; i++) {
         path = strategy_next_path(sctx);

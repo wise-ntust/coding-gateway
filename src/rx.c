@@ -34,7 +34,8 @@ static struct rx_block *rx_find(struct rx_window *win, uint32_t block_id,
 }
 
 void rx_window_insert(struct rx_window *win, const struct wire_header *hdr,
-                      const struct shard *s, int window_size)
+                      const struct shard *s, int window_size,
+                      const struct crypto_ctx *crypto)
 {
     struct rx_block *blk = rx_find(win, hdr->block_id, window_size);
     int idx;
@@ -49,6 +50,11 @@ void rx_window_insert(struct rx_window *win, const struct wire_header *hdr,
     if (blk->received[idx]) return;
 
     blk->shards[idx] = *s;
+    /* Decrypt shard payload if crypto enabled */
+    if (crypto && crypto->enabled) {
+        uint64_t nonce = ((uint64_t)hdr->block_id << 8) | (uint64_t)idx;
+        crypto_xor(crypto, blk->shards[idx].data, blk->shards[idx].len, nonce);
+    }
     blk->received[idx] = true;
     blk->recv_count++;
     if (blk->recv_count == 1)

@@ -6,6 +6,7 @@
 #include "common.h"
 #include "codec.h"
 #include "transport.h"
+#include "crypto.h"
 
 struct rx_block {
     uint32_t     block_id;
@@ -23,8 +24,10 @@ struct rx_window {
 
 void rx_window_init(struct rx_window *win);
 
+/* Insert a received shard. Decrypts payload in-place if crypto enabled. */
 void rx_window_insert(struct rx_window *win, const struct wire_header *hdr,
-                      const struct shard *s, int window_size);
+                      const struct shard *s, int window_size,
+                      const struct crypto_ctx *crypto);
 
 /*
  * Try to decode a block and write recovered packets to TUN.

@@ -15,6 +15,7 @@
 #include "metrics.h"
 #include "tx.h"
 #include "rx.h"
+#include "crypto.h"
 
 static volatile sig_atomic_t running = 1;
 static volatile sig_atomic_t reload_flag = 0;
@@ -61,6 +62,21 @@ int main(int argc, char *argv[])
     if (config_load(config_path, &cfg) != 0)
         return 1;
     g_log_level = cfg.log_level;
+
+    /* Initialise crypto */
+    struct crypto_ctx crypto;
+    if (cfg.crypto_key[0] != '\0') {
+        uint8_t key_bin[CRYPTO_KEY_LEN];
+        if (crypto_parse_key(cfg.crypto_key, key_bin) == 0) {
+            crypto_init(&crypto, key_bin);
+            LOG_INFO("encryption enabled");
+        } else {
+            LOG_ERR("invalid crypto_key (need 64 hex chars)");
+            return 1;
+        }
+    } else {
+        crypto_init(&crypto, NULL);
+    }
 
     LOG_INFO("mode=%s tun=%s listen_port=%d k=%d",
              cfg.mode, cfg.tun_name, cfg.listen_port, cfg.k);
@@ -177,7 +193,7 @@ do_reload:
             ssize_t pkt_len = tun_read(tun_fd, pkt_buf, sizeof(pkt_buf));
             if (pkt_len > 0) {
                 if (tx_block_add_pkt(&tx, pkt_buf, (uint16_t)pkt_len, cfg.k)) {
-                    tx_block_flush(&tx, tctx, sctx, cfg.k);
+                    tx_block_flush(&tx, tctx, sctx, cfg.k, &crypto);
                     tx_block_init(&tx, next_block_id++);
                 }
             }
@@ -185,7 +201,7 @@ do_reload:
 
         /* TX: block timeout flush */
         if (is_tx && tx_block_needs_flush(&tx, cfg.block_timeout_ms)) {
-            tx_block_flush(&tx, tctx, sctx, cfg.k);
+            tx_block_flush(&tx, tctx, sctx, cfg.k, &crypto);
             tx_block_init(&tx, next_block_id++);
         }
 
@@ -201,7 +217,7 @@ do_reload:
                                   &probe_ts, &path_idx);
             if (type == TYPE_DATA && is_rx) {
                 g_metrics.shards_received[path_idx]++;
-                rx_window_insert(&rx_win, &hdr, &shard_in, cfg.window_size);
+                rx_window_insert(&rx_win, &hdr, &shard_in, cfg.window_size, &crypto);
                 if (rx_window_try_decode(&rx_win, hdr.block_id,
                                          hdr.k, cfg.window_size, tun_fd)) {
                     g_metrics.decode_success++;
@@ -267,7 +283,7 @@ do_reload:
     LOG_INFO("shutting down");
 
     if (is_tx && tx.pkt_count > 0)
-        tx_block_flush(&tx, tctx, sctx, cfg.k);
+        tx_block_flush(&tx, tctx, sctx, cfg.k, &crypto);
 
     if (metrics_fd >= 0) close(metrics_fd);
     strategy_free(sctx);

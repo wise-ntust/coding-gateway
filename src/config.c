@@ -105,6 +105,8 @@ int config_load(const char *path, struct gateway_config *cfg)
                     cfg->metrics_port = atoi(val);
                 else if (!strcmp(key, "log_level"))
                     cfg->log_level = atoi(val);
+                else if (!strcmp(key, "crypto_key"))
+                    strncpy(cfg->crypto_key, val, sizeof(cfg->crypto_key) - 1);
             } else if (strcmp(section, "coding") == 0) {
                 if      (!strcmp(key, "k"))
                     cfg->k = atoi(val);

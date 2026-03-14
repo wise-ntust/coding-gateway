@@ -65,13 +65,16 @@ build/test_strategy: src/test_strategy.c build/strategy.o build/config.o | build
 build/test_transport: src/test_transport.c build/config.o | build
 	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
 
-build/test_rx: src/test_rx.c build/rx.o build/codec.o build/gf256.o build/tun.o build/metrics.o build/config.o | build
+build/test_rx: src/test_rx.c build/rx.o build/codec.o build/gf256.o build/tun.o build/metrics.o build/config.o build/crypto.o | build
 	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
 
 build/test_config_edge: src/test_config_edge.c build/config.o | build
 	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
 
 build/test_metrics: src/test_metrics.c build/metrics.o build/config.o | build
+	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
+
+build/test_crypto: src/test_crypto.c build/crypto.o build/config.o | build
 	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
 
 build:

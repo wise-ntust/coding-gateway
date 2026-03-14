@@ -127,6 +127,8 @@ mode = tx               # tx | rx | both
 tun_name = tun0
 tun_addr = 10.0.0.1/30  # gateway assigns this address to the TUN interface
 metrics_port = 9090      # Prometheus /metrics endpoint (0 = disabled)
+log_level = 2            # 0=ERR, 1=WARN, 2=INFO, 3=DBG
+crypto_key =             # 64 hex chars for XOR obfuscation (empty = disabled)
 
 [coding]
 k = 4                       # original packets per block (max 16)
@@ -191,7 +193,7 @@ No `./configure`. No `cmake`. No dependency resolution. A single `Makefile` with
 make test
 ```
 
-Six test suites verify core correctness:
+Nine test suites verify core correctness:
 
 | Test | What it verifies |
 |------|-----------------|
@@ -201,6 +203,9 @@ Six test suites verify core correctness:
 | `test_strategy` | Round-robin, adaptive scaling, EWMA/hysteresis, reload, edge cases (11 cases) |
 | `test_transport` | Wire header packing, protocol constants, timestamp encode/decode (7 cases) |
 | `test_rx` | IPv4/IPv6 packet length extraction, padding strip, edge cases (13 cases) |
+| `test_config_edge` | Empty file, unknown sections, value clamping, whitespace (12 cases) |
+| `test_metrics` | Latency buckets, histogram recording, counter increments (6 cases) |
+| `test_crypto` | XOR encrypt/decrypt roundtrip, nonce/key differentiation, key parsing (8 cases) |
 
 ### Integration Tests (Docker)
 
