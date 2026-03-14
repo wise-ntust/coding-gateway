@@ -266,7 +266,6 @@ To import the dashboard, go to Grafana → Dashboards → Import and upload `das
 - [x] Fixed and weighted strategies
 - [x] Adaptive strategy with loss feedback
 - [x] Probe-based RTT and loss measurement (basic EWMA; full per-path demux is a future refinement)
-- [x] NACK-based ARQ with TX block cache (`arq_enabled` config flag)
 - [x] Runtime config reload (SIGHUP)
 - [x] Prometheus metrics exporter
 - [x] Grafana dashboard

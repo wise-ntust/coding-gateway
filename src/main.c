@@ -36,34 +36,11 @@ struct rx_block {
     int          recv_count;
     bool         decoded;
     uint64_t     first_recv_us; /* time first shard arrived */
-    bool         nack_sent;       /* true after first NACK was sent */
-    uint64_t     nack_sent_us;    /* time NACK was sent */
 };
 
 struct rx_window {
     struct rx_block slots[MAX_WINDOW];
     uint32_t        base_id;
-};
-
-/* -------------------------------------------------------------------------
- * TX block cache: stores flushed blocks for ARQ retransmission
- * ---------------------------------------------------------------------- */
-#define ARQ_CACHE_SIZE_DEFAULT  64
-#define ARQ_CACHE_TTL_US        300000ULL   /* 300 ms fallback if RTT unknown */
-
-struct tx_cache_entry {
-    uint32_t block_id;
-    uint8_t  pkts[MAX_K][MAX_PAYLOAD];
-    uint16_t pkt_len[MAX_K];
-    int      pkt_count;
-    uint64_t cached_at_us;
-    bool     valid;
-};
-
-struct tx_block_cache {
-    struct tx_cache_entry *slots;   /* dynamically allocated */
-    int                    size;
-    int                    write_idx;
 };
 
 /* -------------------------------------------------------------------------
@@ -106,95 +83,12 @@ static long elapsed_ms(const struct timeval *start)
 }
 
 /* -------------------------------------------------------------------------
- * TX block cache helpers
- * ---------------------------------------------------------------------- */
-static int tx_cache_init(struct tx_block_cache *c, int size)
-{
-    c->slots = (struct tx_cache_entry *)calloc((size_t)size, sizeof(*c->slots));
-    if (!c->slots) {
-        LOG_ERR("tx_cache_init: calloc failed (size=%d)", size);
-        return -1;
-    }
-    c->size      = size;
-    c->write_idx = 0;
-    return 0;
-}
-
-static void tx_cache_free(struct tx_block_cache *c)
-{
-    free(c->slots);
-    c->slots = NULL;
-}
-
-static void tx_cache_store(struct tx_block_cache *c, const struct tx_block *blk)
-{
-    struct tx_cache_entry *e = &c->slots[c->write_idx];
-    uint16_t max_len = 0;
-    int i;
-
-    if (blk->pkt_count < 0 || blk->pkt_count > MAX_K) {
-        LOG_WARN("tx_cache_store: invalid pkt_count %d, skipping", blk->pkt_count);
-        return;
-    }
-
-    /* Find max payload length across real packets. */
-    for (i = 0; i < blk->pkt_count; i++) {
-        if (blk->pkt_len[i] > max_len) max_len = blk->pkt_len[i];
-    }
-    if (max_len > MAX_PAYLOAD) max_len = MAX_PAYLOAD;
-
-    e->block_id     = blk->block_id;
-    e->pkt_count    = blk->pkt_count;
-    e->cached_at_us = now_us();
-    e->valid        = true;
-
-    /* Copy real packets; store uniform length for consistent re-encode. */
-    for (i = 0; i < blk->pkt_count; i++) {
-        uint16_t copy_len = blk->pkt_len[i];
-        if (copy_len > MAX_PAYLOAD) copy_len = MAX_PAYLOAD;
-        memcpy(e->pkts[i], blk->pkts[i], copy_len);
-        e->pkt_len[i] = max_len;
-    }
-    /* Zero-fill ghost slots (flush_block already padded blk->pkts, but the
-     * cache slot may have stale data from a previous block). */
-    for (i = blk->pkt_count; i < MAX_K; i++) {
-        memset(e->pkts[i], 0, max_len > 0 ? max_len : MAX_PAYLOAD);
-        e->pkt_len[i] = max_len;
-    }
-
-    c->write_idx = (c->write_idx + 1) % c->size;
-}
-
-static struct tx_cache_entry *tx_cache_find(struct tx_block_cache *c,
-                                             uint32_t block_id)
-{
-    int i;
-    for (i = 0; i < c->size; i++) {
-        if (c->slots[i].valid && c->slots[i].block_id == block_id)
-            return &c->slots[i];
-    }
-    return NULL;
-}
-
-static void tx_cache_evict(struct tx_block_cache *c, uint64_t max_age_us)
-{
-    uint64_t now = now_us();
-    int i;
-    for (i = 0; i < c->size; i++) {
-        if (c->slots[i].valid &&
-            (now - c->slots[i].cached_at_us) >= max_age_us)
-            c->slots[i].valid = false;
-    }
-}
-
-/* -------------------------------------------------------------------------
  * Flush the TX block: encode and send all shards via strategy
  * ---------------------------------------------------------------------- */
 static void flush_block(struct tx_block *blk,
                         struct transport_ctx *tctx,
                         struct strategy_ctx  *sctx,
-                        int k,
-                        struct tx_block_cache *cache)
+                        int k)
 {
     struct shard shards[MAX_N];
     int n, i, path;
@@ -229,9 +123,6 @@ static void flush_block(struct tx_block *blk,
     encode_block((const uint8_t (*)[MAX_PAYLOAD])blk->pkts,
                  blk->pkt_len, k, n, shards);
 
-    if (cache)
-        tx_cache_store(cache, blk);
-
     for (i = 0; i < n; i++) {
         path = strategy_next_path(sctx);
         if (path < 0) {
@@ -249,46 +140,6 @@ static void flush_block(struct tx_block *blk,
 
     g_metrics.blocks_encoded++;
     LOG_DBG("flushed block %u: k=%d n=%d", blk->block_id, k, n);
-}
-
-/* -------------------------------------------------------------------------
- * Handle incoming NACK: re-encode block from cache and send repair shards.
- * ---------------------------------------------------------------------- */
-static void handle_nack(struct tx_block_cache *cache,
-                        struct transport_ctx  *tctx,
-                        struct strategy_ctx   *sctx,
-                        uint32_t block_id, int k)
-{
-    struct tx_cache_entry *e;
-    struct shard           shards[MAX_N];
-    int                    n_repair, i, path;
-
-    if (!cache || !cache->slots) return;
-
-    e = tx_cache_find(cache, block_id);
-    if (!e) {
-        LOG_DBG("NACK for block %u: not in cache", block_id);
-        return;
-    }
-
-    /* k+1 repair shards with fresh random coefficients */
-    n_repair = k + 1;
-    if (n_repair > MAX_N) n_repair = MAX_N;
-
-    /* Data in cache entry is already padded (flush_block pads before caching).
-     * Use cached lengths directly — no need to recompute or re-pad. */
-    encode_block((const uint8_t (*)[MAX_PAYLOAD])e->pkts,
-                 e->pkt_len, k, n_repair, shards);
-
-    for (i = 0; i < n_repair; i++) {
-        path = strategy_next_path(sctx);
-        if (path < 0) break;
-        if (transport_send_shard(tctx, path, block_id,
-                                 (uint8_t)i, (uint8_t)k, (uint8_t)n_repair,
-                                 &shards[i]) != 0)
-            LOG_WARN("NACK retransmit failed: block=%u shard=%d", block_id, i);
-    }
-    LOG_DBG("NACK handled: block=%u sent %d repair shards", block_id, n_repair);
 }
 
 /* -------------------------------------------------------------------------
@@ -395,8 +246,7 @@ static bool try_decode_block(struct rx_block *blk, int k, int tun_fd)
  * and high-rate iperf3 (blocks arrive every ~11 ms at 10 Mbps). */
 #define RX_BLOCK_TIMEOUT_US 50000ULL
 
-static void rx_window_advance(struct rx_window *win, int window_size,
-                              struct transport_ctx *tctx, bool arq_enabled)
+static void rx_window_advance(struct rx_window *win, int window_size)
 {
     int  i;
     bool found;
@@ -407,28 +257,8 @@ static void rx_window_advance(struct rx_window *win, int window_size,
                 win->slots[i].block_id == win->base_id) {
                 bool expired = false;
                 if (!win->slots[i].decoded) {
-                    if (!win->slots[i].nack_sent) {
-                        /* First timeout: send NACK and give block another window */
-                        {
-                            uint64_t t = now_us();
-                            if (t - win->slots[i].first_recv_us >= RX_BLOCK_TIMEOUT_US) {
-                                if (arq_enabled && tctx) {
-                                    transport_send_nack(tctx, 0, win->slots[i].block_id);
-                                    win->slots[i].nack_sent    = true;
-                                    win->slots[i].nack_sent_us = t;
-                                    win->slots[i].first_recv_us = t;
-                                    LOG_DBG("NACK sent for block %u", win->slots[i].block_id);
-                                } else {
-                                    /* ARQ disabled: evict immediately on first timeout */
-                                    expired = true;
-                                }
-                            }
-                        }
-                    } else {
-                        /* Already NACKed: evict after second timeout */
-                        if (now_us() - win->slots[i].nack_sent_us >= RX_BLOCK_TIMEOUT_US)
-                            expired = true;
-                    }
+                    if (now_us() - win->slots[i].first_recv_us >= RX_BLOCK_TIMEOUT_US)
+                        expired = true;
                 }
                 if (win->slots[i].decoded || expired) {
                     memset(&win->slots[i], 0, sizeof(win->slots[i]));
@@ -478,10 +308,6 @@ int main(int argc, char *argv[])
 
     /* RX state */
     struct rx_window rx_win;
-
-    /* TX block cache (ARQ) */
-    struct tx_block_cache tx_cache;
-    memset(&tx_cache, 0, sizeof(tx_cache));
 
     const char *config_path;
 
@@ -545,20 +371,6 @@ int main(int argc, char *argv[])
     /* Initialise RX window */
     memset(&rx_win, 0, sizeof(rx_win));
     rx_win.base_id = 0;
-
-    /* Initialise TX block cache if ARQ enabled */
-    if (cfg.arq_enabled) {
-        int cache_size = (cfg.arq_cache_size > 0)
-                         ? cfg.arq_cache_size
-                         : ARQ_CACHE_SIZE_DEFAULT;
-        if (tx_cache_init(&tx_cache, cache_size) != 0) {
-            LOG_ERR("failed to allocate TX block cache");
-            strategy_free(sctx);
-            transport_free(tctx);
-            close(tun_fd);
-            return 1;
-        }
-    }
 
     /* Signal handling */
     {
@@ -628,7 +440,6 @@ do_reload:
                     cfg.probe_interval_ms    = new_cfg.probe_interval_ms;
                     cfg.probe_loss_threshold = new_cfg.probe_loss_threshold;
                     cfg.block_timeout_ms     = new_cfg.block_timeout_ms;
-                    cfg.arq_enabled          = new_cfg.arq_enabled;
                     LOG_INFO("config reloaded via SIGHUP");
                 } else {
                     LOG_WARN("SIGHUP reload failed, keeping current config");
@@ -652,8 +463,7 @@ do_reload:
                 }
 
                 if (tx.pkt_count >= cfg.k) {
-                    flush_block(&tx, tctx, sctx, cfg.k,
-                                cfg.arq_enabled ? &tx_cache : NULL);
+                    flush_block(&tx, tctx, sctx, cfg.k);
                     memset(&tx, 0, sizeof(tx));
                     tx.block_id = next_block_id++;
                 }
@@ -663,8 +473,7 @@ do_reload:
         /* ---- TX: block timeout flush --------------------------------- */
         if (is_tx && tx.pkt_count > 0) {
             if (elapsed_ms(&tx.first_pkt_time) >= (long)cfg.block_timeout_ms) {
-                flush_block(&tx, tctx, sctx, cfg.k,
-                            cfg.arq_enabled ? &tx_cache : NULL);
+                flush_block(&tx, tctx, sctx, cfg.k);
                 memset(&tx, 0, sizeof(tx));
                 tx.block_id = next_block_id++;
             }
@@ -698,7 +507,7 @@ do_reload:
                         }
                     }
                 }
-                rx_window_advance(&rx_win, cfg.window_size, tctx, cfg.arq_enabled);
+                rx_window_advance(&rx_win, cfg.window_size);
             } else if (type == TYPE_PROBE) {
                 LOG_DBG("PROBE received on path %d ts=%llu",
                         path_idx, (unsigned long long)probe_ts);
@@ -714,8 +523,6 @@ do_reload:
                 strategy_update_probe(sctx, path_idx, rtt_us, true);
                 LOG_DBG("PROBE_ECHO path=%d rtt=%llu us",
                         path_idx, (unsigned long long)rtt_us);
-            } else if (type == TYPE_NACK && is_tx && cfg.arq_enabled) {
-                handle_nack(&tx_cache, tctx, sctx, hdr.block_id, cfg.k);
             }
         }
 
@@ -763,14 +570,6 @@ do_reload:
                     }
                 }
                 last_probe_tv = now_tv;
-                /* Evict stale ARQ cache entries every probe interval */
-                if (cfg.arq_enabled && tx_cache.slots) {
-                    struct path_state *ps0 = strategy_get_path_state(sctx, 0);
-                    uint64_t ttl = (ps0 && ps0->rtt_ms > 10.0f)
-                        ? (uint64_t)(ps0->rtt_ms * 3000.0f)   /* rtt_ms × 1000 µs/ms × 3 = 3×RTT in µs */
-                        : ARQ_CACHE_TTL_US;
-                    tx_cache_evict(&tx_cache, ttl);
-                }
             }
         }
     }
@@ -780,11 +579,7 @@ do_reload:
 
     /* Flush any partial TX block before exit */
     if (is_tx && tx.pkt_count > 0)
-        flush_block(&tx, tctx, sctx, cfg.k,
-                    cfg.arq_enabled ? &tx_cache : NULL);
-
-    if (cfg.arq_enabled)
-        tx_cache_free(&tx_cache);
+        flush_block(&tx, tctx, sctx, cfg.k);
 
     if (metrics_fd >= 0) close(metrics_fd);
     strategy_free(sctx);

@@ -163,20 +163,6 @@ int transport_send_probe_echo(struct transport_ctx *ctx, int path_idx,
     return send_buf(ctx, path_idx, buf, sizeof(buf));
 }
 
-int transport_send_nack(struct transport_ctx *ctx, int path_idx,
-                        uint32_t block_id)
-{
-    uint8_t buf[WIRE_HDR_SIZE];
-    struct wire_header *hdr = (struct wire_header *)buf;
-
-    memset(hdr, 0, WIRE_HDR_SIZE);
-    hdr->magic    = htons(WIRE_MAGIC);
-    hdr->version  = WIRE_VERSION;
-    hdr->type     = TYPE_NACK;
-    hdr->block_id = htonl(block_id);
-    return send_buf(ctx, path_idx, buf, WIRE_HDR_SIZE);
-}
-
 int transport_fill_fdset(struct transport_ctx *ctx, fd_set *rfds)
 {
     FD_SET(ctx->recv_fd, rfds);
@@ -237,10 +223,6 @@ int transport_recv(struct transport_ctx *ctx, const fd_set *rfds,
                              (uint64_t)ntohl(lo);
         }
         return (int)hdr->type;
-    }
-    if (hdr->type == TYPE_NACK) {
-        /* block_id already byte-swapped above; no payload to parse */
-        return TYPE_NACK;
     }
     return -1;
 }

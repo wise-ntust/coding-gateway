@@ -13,7 +13,6 @@
 #define TYPE_DATA         0x01
 #define TYPE_PROBE        0x02
 #define TYPE_PROBE_ECHO   0x03
-#define TYPE_NACK         0x04
 
 /*
  * Fixed wire header (14 bytes), followed by k coefficient bytes,
@@ -75,14 +74,6 @@ int transport_send_probe_echo(struct transport_ctx *ctx,
                               uint64_t timestamp_us);
 
 /*
- * Send a NACK for block_id on path[path_idx].
- * RX calls this when a block expires undecoded.
- */
-int transport_send_nack(struct transport_ctx *ctx,
-                        int path_idx,
-                        uint32_t block_id);
-
-/*
  * Add all receive socket fds to rfds.
  * Returns nfds (highest fd + 1) for use with select().
  */
@@ -93,7 +84,7 @@ int transport_fill_fdset(struct transport_ctx *ctx, fd_set *rfds);
  * On TYPE_DATA:       fills *hdr and *shard_out; sets *path_idx.
  * On TYPE_PROBE/_ECHO: fills *hdr and *probe_ts_out; sets *path_idx.
  *
- * Returns TYPE_DATA, TYPE_PROBE, TYPE_PROBE_ECHO, TYPE_NACK, or -1 on error/no data.
+ * Returns TYPE_DATA, TYPE_PROBE, TYPE_PROBE_ECHO, or -1 on error/no data.
  */
 int transport_recv(struct transport_ctx *ctx, const fd_set *rfds,
                    struct wire_header *hdr,

@@ -40,8 +40,6 @@ int config_load(const char *path, struct gateway_config *cfg)
     cfg->probe_interval_ms = 100;
     cfg->probe_loss_threshold = 0.3f;
     cfg->listen_port = 7000;
-    cfg->arq_enabled    = false;
-    cfg->arq_cache_size = 64;
     cfg->metrics_port   = 0;
 
     section[0] = '\0';
@@ -121,11 +119,6 @@ int config_load(const char *path, struct gateway_config *cfg)
                     cfg->probe_interval_ms = atoi(val);
                 else if (!strcmp(key, "probe_loss_threshold"))
                     cfg->probe_loss_threshold = (float)atof(val);
-            } else if (strcmp(section, "arq") == 0) {
-                if (strcmp(key, "arq_enabled") == 0)
-                    cfg->arq_enabled = (strcmp(val, "true") == 0 || strcmp(val, "1") == 0);
-                else if (strcmp(key, "arq_cache_size") == 0)
-                    cfg->arq_cache_size = atoi(val);
             } else if (cur_path != NULL) {
                 if      (!strcmp(key, "interface"))
                     strncpy(cur_path->interface, val,
@@ -150,13 +143,6 @@ int config_load(const char *path, struct gateway_config *cfg)
     if (cfg->window_size > MAX_WINDOW) cfg->window_size = MAX_WINDOW;
     if (cfg->max_payload < 1) cfg->max_payload = 1;
     if (cfg->max_payload > MAX_PAYLOAD) cfg->max_payload = MAX_PAYLOAD;
-    if (cfg->arq_cache_size < 1 || cfg->arq_cache_size > 256) {
-        LOG_WARN("arq_cache_size %d out of range [1,256], clamping",
-                 cfg->arq_cache_size);
-        if (cfg->arq_cache_size < 1)   cfg->arq_cache_size = 1;
-        if (cfg->arq_cache_size > 256) cfg->arq_cache_size = 256;
-    }
-
     fclose(f);
     return 0;
 }
