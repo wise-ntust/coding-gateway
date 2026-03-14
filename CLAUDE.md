@@ -49,6 +49,6 @@ Current status (track against `README.md`):
 - [x] Runtime config reload (SIGHUP)
 - [x] Prometheus metrics exporter
 - [x] Grafana dashboard
-- [ ] OpenWrt package feed
+- [x] OpenWrt package feed
 
 Update the checkboxes here and in `README.md` together when items are completed.

@@ -270,7 +270,7 @@ To import the dashboard, go to Grafana → Dashboards → Import and upload `das
 - [x] Runtime config reload (SIGHUP)
 - [x] Prometheus metrics exporter
 - [x] Grafana dashboard
-- [ ] OpenWrt package feed
+- [x] OpenWrt package feed
 
 ---
 
