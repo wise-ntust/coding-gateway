@@ -30,6 +30,11 @@ Always respond in Traditional Chinese (繁體中文) unless the user writes in E
 - Loopback test (`config/loopback-*.conf`) must pass before marking a codec change complete
 - Simulate shard loss with `drop_simulation_rate` to verify redundancy behaviour
 
+### Documentation Sync
+- **每次完成動作（feature、bugfix、實驗、移除功能）後，檢查 README.md 是否反映最新狀態**
+- 實驗結果、測試清單、config 範例、路線圖都必須與程式碼同步
+- 如果有新的實驗數據（尤其是 30-rep 統計結果），更新 README.md 的 Evaluation 區段
+
 ### No Over-Engineering
 - Do not add abstractions until there are at least two concrete use cases
 - Do not add error handling for states the code cannot reach

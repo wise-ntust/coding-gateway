@@ -126,6 +126,7 @@ Configuration is a simple INI / key=value file — no external parser library re
 mode = tx               # tx | rx | both
 tun_name = tun0
 tun_addr = 10.0.0.1/30  # gateway assigns this address to the TUN interface
+metrics_port = 9090      # Prometheus /metrics endpoint (0 = disabled)
 
 [coding]
 k = 4                       # original packets per block (max 16)
@@ -182,6 +183,102 @@ No `./configure`. No `cmake`. No dependency resolution. A single `Makefile` with
 
 ---
 
+## Testing
+
+### Unit Tests
+
+```bash
+make test
+```
+
+Three test suites verify core correctness:
+
+| Test | What it verifies |
+|------|-----------------|
+| `test_gf256` | GF(2⁸) arithmetic: add=XOR, mul-by-0/1, commutativity, distributivity, all 255 inverse elements |
+| `test_codec` | Encode/decode round-trip, recovery with shard loss, failure on insufficient shards |
+| `test_config` | INI parser: TX/RX configs, missing file handling |
+
+### Integration Tests (Docker)
+
+```bash
+./scripts/run-all-tests.sh
+```
+
+Seven Docker-based tests verify the full pipeline:
+
+| Test | Scenario | Expected |
+|------|----------|----------|
+| T01 | Basic connectivity (no faults) | 5/5 pings |
+| T02 | 20% shard loss via `tc netem` | FEC absorbs, pings pass |
+| T03 | 50% shard loss (exceeds FEC capacity) | Significant packet loss (negative test) |
+| T04 | Single path fully blocked | 100% loss (negative test) |
+| T05 | Multi-path: block path1, survive via path2 | 0% loss |
+| T06 | SIGHUP config reload | Config reloaded + tunnel still functional |
+| T07 | Prometheus `/metrics` endpoint | All expected metrics present |
+
+---
+
+## Evaluation
+
+Experiments are in `scripts/eval/`. Each repeated experiment runs **30 repetitions** per data point for statistical rigor. Summary CSVs contain mean ± standard deviation.
+
+### E1: Decode Success Rate vs Loss Rate (N=30)
+
+| Loss | Single-path (mean±std) | Multi-path (mean±std) |
+|------|----------------------|---------------------|
+| 0% | 100.00 ± 0.00 | 100.00 ± 0.00 |
+| 10% | 99.17 ± 1.86 | 98.33 ± 3.25 |
+| 20% | 95.83 ± 3.89 | 94.17 ± 4.84 |
+| 30% | 91.33 ± 5.76 | 92.50 ± 6.02 |
+| 40% | 80.67 ± 7.50 | 85.67 ± 6.16 |
+| 50% | 76.33 ± 9.74 | 75.50 ± 6.24 |
+| 60% | 65.17 ± 10.29 | 64.17 ± 10.73 |
+| 70% | 2.17 ± 10.78 | 2.33 ± 10.86 |
+
+### E7: Burst vs Random Loss (N=30)
+
+FEC performs better under bursty loss (corr=25%) than uniform random loss at moderate loss rates — consistent with mmWave blockage characteristics where loss events are temporally correlated.
+
+| Loss | Random (corr=0%) | Burst (corr=25%) |
+|------|-----------------|-------------------|
+| 10% | 97.17 ± 3.08 | 99.83 ± 0.90 |
+| 20% | 88.67 ± 6.70 | 94.33 ± 5.73 |
+| 30% | 78.67 ± 10.56 | 83.33 ± 7.89 |
+| 40% | 66.33 ± 11.61 | 67.83 ± 9.72 |
+| 50% | 44.33 ± 10.47 | 29.33 ± 25.55 |
+
+### E9: Tunnel Latency Overhead (N=30)
+
+| Mode | Mean ± Std |
+|------|-----------|
+| Direct (Docker bridge) | 0.133 ± 0.015 ms |
+| Tunneled (TUN + FEC) | 27.124 ± 0.580 ms |
+| **Coding overhead** | **~27 ms** |
+
+The overhead is dominated by `block_timeout_ms` (block assembly wait), not GF(2⁸) computation.
+
+### Additional Experiments
+
+| Experiment | Script | Description |
+|-----------|--------|-------------|
+| E3 | `e3_blockage_recovery.sh` | Blockage recovery latency (single-path) |
+| E3-MP | `e3_multipath_blockage.sh` | Multi-path blockage: **0 ms recovery gap** for all durations |
+| E5 | `e5_overhead.sh` | Bandwidth overhead ratio: 1.483× (theoretical: 1.5×) |
+| E8 | `e8_k_sweep.sh` | k-value sweep: latency vs decode success tradeoff |
+| E10 | `e10_tripath_degradation.sh` | Path degradation: 2→1→0 alive paths |
+
+### Design Decision: ARQ Removed
+
+NACK-based ARQ (Automatic Repeat reQuest) was implemented and evaluated in a controlled experiment (E6). Results showed ARQ hurts more than it helps in the target scenario:
+
+- **Low loss (10–20%):** marginal improvement (+2–3%)
+- **High loss (30–50%):** significant degradation (−10–25%)
+
+The cause: NACK retransmissions and repair shards are themselves subject to the same loss, adding useless traffic under high loss conditions. Since the target environment is mmWave blockage (high, bursty loss), ARQ was removed in favor of pure forward error correction.
+
+---
+
 ## Getting Started
 
 ### Step 1 — Unit-test the codec on localhost
@@ -190,21 +287,11 @@ No `./configure`. No `cmake`. No dependency resolution. A single `Makefile` with
 make test
 ```
 
-This runs `test_gf256` (field arithmetic correctness) and `test_codec` (encode/decode with simulated shard loss). Both must pass before any other step.
-
 ### Step 2 — End-to-end test with Docker Compose
 
-The fastest way to verify the full pipeline without physical hardware:
-
 ```bash
-./scripts/test-docker.sh
-```
-
-This builds the binary inside an Alpine Linux container (musl libc — close to OpenWrt), launches TX and RX nodes on a Docker bridge network, and confirms that `ping 10.0.0.2` reaches the far end through the TUN tunnel.
-
-```bash
-# Or launch manually and inspect logs:
-docker compose -f docker-compose.dev.yml up
+./scripts/run-all-tests.sh    # all 7 integration tests
+./scripts/test-docker.sh      # or just basic connectivity
 ```
 
 ### Step 3 — Two physical machines
