@@ -15,6 +15,7 @@ test_04_singlepath_block.sh
 test_05_multipath_failover.sh
 test_06_sighup_reload.sh
 test_07_metrics_endpoint.sh
+test_08_ipv6_tunnel.sh
 "
 
 passed=0

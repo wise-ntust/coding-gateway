@@ -65,6 +65,9 @@ build/test_strategy: src/test_strategy.c build/strategy.o build/config.o | build
 build/test_transport: src/test_transport.c | build
 	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
 
+build/test_rx: src/test_rx.c build/rx.o build/codec.o build/gf256.o build/tun.o build/metrics.o | build
+	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
+
 build:
 	mkdir -p build
 

@@ -35,4 +35,13 @@ bool rx_window_try_decode(struct rx_window *win, uint32_t block_id,
 
 void rx_window_advance(struct rx_window *win, int window_size);
 
+/*
+ * Extract actual IP packet length from header, stripping padding.
+ * Supports IPv4 (version=4, total-length at bytes 2-3) and
+ * IPv6 (version=6, payload-length at bytes 4-5, +40 header).
+ * Returns the detected length, or padded_len if the packet is
+ * too short or the header is unrecognized.
+ */
+uint16_t ip_packet_length(const uint8_t *pkt, uint16_t padded_len);
+
 #endif /* RX_H */

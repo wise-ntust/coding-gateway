@@ -80,20 +80,7 @@ static bool try_decode(struct rx_block *blk, int k, int tun_fd)
     blk->decoded = true;
 
     for (i = 0; i < k; i++) {
-        uint16_t ip_len = out_len[i];
-        if (ip_len >= 20) {
-            uint8_t version = (out[i][0] >> 4) & 0x0F;
-            if (version == 4) {
-                uint16_t total = (uint16_t)((out[i][2] << 8) | out[i][3]);
-                if (total >= 20 && total <= ip_len)
-                    ip_len = total;
-            } else if (version == 6 && ip_len >= 40) {
-                uint16_t payload = (uint16_t)((out[i][4] << 8) | out[i][5]);
-                uint16_t total = payload + 40;
-                if (total >= 40 && total <= ip_len)
-                    ip_len = total;
-            }
-        }
+        uint16_t ip_len = ip_packet_length(out[i], out_len[i]);
         if (tun_write(tun_fd, out[i], ip_len) < 0)
             LOG_WARN("tun_write failed for block %u pkt %d", blk->block_id, i);
     }
@@ -107,6 +94,24 @@ bool rx_window_try_decode(struct rx_window *win, uint32_t block_id,
     struct rx_block *blk = rx_find(win, block_id, window_size);
     if (!blk) return false;
     return try_decode(blk, k, tun_fd);
+}
+
+uint16_t ip_packet_length(const uint8_t *pkt, uint16_t padded_len)
+{
+    if (padded_len >= 20) {
+        uint8_t version = (pkt[0] >> 4) & 0x0F;
+        if (version == 4) {
+            uint16_t total = (uint16_t)((pkt[2] << 8) | pkt[3]);
+            if (total >= 20 && total <= padded_len)
+                return total;
+        } else if (version == 6 && padded_len >= 40) {
+            uint16_t payload = (uint16_t)((pkt[4] << 8) | pkt[5]);
+            uint16_t total = payload + 40;
+            if (total >= 40 && total <= padded_len)
+                return total;
+        }
+    }
+    return padded_len;
 }
 
 void rx_window_advance(struct rx_window *win, int window_size)

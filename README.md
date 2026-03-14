@@ -191,13 +191,16 @@ No `./configure`. No `cmake`. No dependency resolution. A single `Makefile` with
 make test
 ```
 
-Three test suites verify core correctness:
+Six test suites verify core correctness:
 
 | Test | What it verifies |
 |------|-----------------|
 | `test_gf256` | GF(2⁸) arithmetic: add=XOR, mul-by-0/1, commutativity, distributivity, all 255 inverse elements |
 | `test_codec` | Encode/decode round-trip, recovery with shard loss, failure on insufficient shards |
 | `test_config` | INI parser: TX/RX configs, missing file handling |
+| `test_strategy` | Round-robin, adaptive scaling, EWMA/hysteresis, reload, edge cases (11 cases) |
+| `test_transport` | Wire header packing, protocol constants, timestamp encode/decode (7 cases) |
+| `test_rx` | IPv4/IPv6 packet length extraction, padding strip, edge cases (13 cases) |
 
 ### Integration Tests (Docker)
 
@@ -205,7 +208,7 @@ Three test suites verify core correctness:
 ./scripts/run-all-tests.sh
 ```
 
-Seven Docker-based tests verify the full pipeline:
+Eight Docker-based tests verify the full pipeline:
 
 | Test | Scenario | Expected |
 |------|----------|----------|
@@ -216,6 +219,7 @@ Seven Docker-based tests verify the full pipeline:
 | T05 | Multi-path: block path1, survive via path2 | 0% loss |
 | T06 | SIGHUP config reload | Config reloaded + tunnel still functional |
 | T07 | Prometheus `/metrics` endpoint | All expected metrics present |
+| T08 | IPv6 tunnel (ping6 fd00::2 through TUN) | 5/5 pings via IPv6 |
 
 > IPv4 and IPv6 packets are both supported. The RX decode path detects the IP version from the first nibble and extracts the correct total length (IPv4 bytes 2-3, IPv6 bytes 4-5 + 40).
 
