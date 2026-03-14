@@ -225,18 +225,20 @@ Seven Docker-based tests verify the full pipeline:
 
 Experiments are in `scripts/eval/`. Each repeated experiment runs **30 repetitions** per data point for statistical rigor. Summary CSVs contain mean ± standard deviation.
 
-### E1: Decode Success Rate vs Loss Rate (N=30)
+### E0/E1: Decode Success Rate — No-FEC Baseline vs FEC (N=30)
 
-| Loss | Single-path (mean±std) | Multi-path (mean±std) |
-|------|----------------------|---------------------|
-| 0% | 100.00 ± 0.00 | 100.00 ± 0.00 |
-| 10% | 99.17 ± 1.86 | 98.33 ± 3.25 |
-| 20% | 95.83 ± 3.89 | 94.17 ± 4.84 |
-| 30% | 91.33 ± 5.76 | 92.50 ± 6.02 |
-| 40% | 80.67 ± 7.50 | 85.67 ± 6.16 |
-| 50% | 76.33 ± 9.74 | 75.50 ± 6.24 |
-| 60% | 65.17 ± 10.29 | 64.17 ± 10.73 |
-| 70% | 2.17 ± 10.78 | 2.33 ± 10.86 |
+| Loss | No FEC (baseline) | FEC Single-path | FEC Multi-path |
+|------|-------------------|-----------------|----------------|
+| 0% | 100.00 ± 0.00 | 100.00 ± 0.00 | 100.00 ± 0.00 |
+| 10% | 55.50 ± 39.71 | **99.17 ± 1.86** | **98.33 ± 3.25** |
+| 20% | 3.33 ± 17.95 | **95.83 ± 3.89** | **94.17 ± 4.84** |
+| 30% | 0.00 ± 0.00 | **91.33 ± 5.76** | **92.50 ± 6.02** |
+| 40% | 0.00 ± 0.00 | **80.67 ± 7.50** | **85.67 ± 6.16** |
+| 50% | 0.00 ± 0.00 | **76.33 ± 9.74** | **75.50 ± 6.24** |
+| 60% | 0.00 ± 0.00 | **65.17 ± 10.29** | **64.17 ± 10.73** |
+| 70% | 0.00 ± 0.00 | **2.17 ± 10.78** | **2.33 ± 10.86** |
+
+Without FEC, the tunnel collapses at 20% loss (3.3% success) and is completely unusable at 30%+. With FEC (redundancy_ratio=1.5), the same tunnel maintains 91% success at 30% loss — a **91 percentage point improvement**.
 
 ### E7: Burst vs Random Loss (N=30)
 
