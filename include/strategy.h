@@ -46,4 +46,12 @@ void strategy_update_probe(struct strategy_ctx *ctx,
 struct path_state *strategy_get_path_state(struct strategy_ctx *ctx, int idx);
 int strategy_path_count(struct strategy_ctx *ctx);
 
+/*
+ * Hot-reload strategy parameters from a freshly parsed config.
+ * Updates base_redundancy, loss_threshold, strategy type, and per-path
+ * weight/enabled flags.  Preserves runtime state (loss_rate, rtt_ms, alive,
+ * probe counters) so adaptive feedback is not lost across reloads.
+ */
+void strategy_reload(struct strategy_ctx *ctx, const struct gateway_config *cfg);
+
 #endif /* STRATEGY_H */

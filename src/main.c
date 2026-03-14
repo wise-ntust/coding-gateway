@@ -69,11 +69,18 @@ struct tx_block_cache {
  * Global running flag — set to 0 by SIGINT/SIGTERM
  * ---------------------------------------------------------------------- */
 static volatile sig_atomic_t running = 1;
+static volatile sig_atomic_t reload_flag = 0;
 
 static void sig_handler(int sig)
 {
     (void)sig;
     running = 0;
+}
+
+static void sighup_handler(int sig)
+{
+    (void)sig;
+    reload_flag = 1;
 }
 
 /* -------------------------------------------------------------------------
@@ -471,15 +478,18 @@ int main(int argc, char *argv[])
     struct tx_block_cache tx_cache;
     memset(&tx_cache, 0, sizeof(tx_cache));
 
+    const char *config_path;
+
     if (argc < 3 || strcmp(argv[1], "--config") != 0) {
         fprintf(stderr, "usage: coding-gateway --config <path>\n");
         return 1;
     }
+    config_path = argv[2];
 
     srand((unsigned int)time(NULL));
     gf256_init();
 
-    if (config_load(argv[2], &cfg) != 0)
+    if (config_load(config_path, &cfg) != 0)
         return 1;
 
     LOG_INFO("mode=%s tun=%s listen_port=%d k=%d",
@@ -544,6 +554,9 @@ int main(int argc, char *argv[])
         sa.sa_handler = sig_handler;
         sigaction(SIGINT,  &sa, NULL);
         sigaction(SIGTERM, &sa, NULL);
+
+        sa.sa_handler = sighup_handler;
+        sigaction(SIGHUP, &sa, NULL);
     }
 
     LOG_INFO("event loop starting");
@@ -578,7 +591,30 @@ int main(int argc, char *argv[])
         ret = select(nfds, &rfds, NULL, NULL, &timeout);
         if (ret < 0) {
             if (!running) break;
+            /* SIGHUP interrupts select() with EINTR — not an error */
+            if (reload_flag) goto do_reload;
             LOG_WARN("select() error");
+            continue;
+        }
+
+        /* ---- SIGHUP: hot-reload config -------------------------------- */
+        if (reload_flag) {
+do_reload:
+            reload_flag = 0;
+            {
+                struct gateway_config new_cfg;
+                if (config_load(config_path, &new_cfg) == 0) {
+                    strategy_reload(sctx, &new_cfg);
+                    cfg.redundancy_ratio     = new_cfg.redundancy_ratio;
+                    cfg.probe_interval_ms    = new_cfg.probe_interval_ms;
+                    cfg.probe_loss_threshold = new_cfg.probe_loss_threshold;
+                    cfg.block_timeout_ms     = new_cfg.block_timeout_ms;
+                    cfg.arq_enabled          = new_cfg.arq_enabled;
+                    LOG_INFO("config reloaded via SIGHUP");
+                } else {
+                    LOG_WARN("SIGHUP reload failed, keeping current config");
+                }
+            }
             continue;
         }
 

@@ -267,7 +267,7 @@ A reference Grafana dashboard is provided in `dashboards/`. The adaptive strateg
 - [x] Adaptive strategy with loss feedback
 - [x] Probe-based RTT and loss measurement (basic EWMA; full per-path demux is a future refinement)
 - [x] NACK-based ARQ with TX block cache (`arq_enabled` config flag)
-- [ ] Runtime config reload (SIGHUP)
+- [x] Runtime config reload (SIGHUP)
 - [ ] Prometheus metrics exporter
 - [ ] Grafana dashboard
 - [ ] OpenWrt package feed

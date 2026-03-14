@@ -119,3 +119,25 @@ int strategy_path_count(struct strategy_ctx *ctx)
 {
     return ctx->path_count;
 }
+
+void strategy_reload(struct strategy_ctx *ctx, const struct gateway_config *cfg)
+{
+    int i;
+
+    ctx->base_redundancy = cfg->redundancy_ratio;
+    ctx->loss_threshold  = cfg->probe_loss_threshold;
+    snprintf(ctx->type, sizeof(ctx->type), "%s", cfg->strategy_type);
+
+    /* Update per-path config while preserving runtime state. */
+    for (i = 0; i < ctx->path_count && i < cfg->path_count; i++) {
+        ctx->paths[i].cfg.weight  = cfg->paths[i].weight;
+        ctx->paths[i].cfg.enabled = cfg->paths[i].enabled;
+        ctx->paths[i].weight_current = cfg->paths[i].weight;
+        /* If a path was just disabled via config, mark it dead immediately. */
+        if (!cfg->paths[i].enabled)
+            ctx->paths[i].alive = false;
+    }
+
+    LOG_INFO("strategy reloaded: type=%s redundancy=%.2f loss_thresh=%.2f",
+             ctx->type, ctx->base_redundancy, ctx->loss_threshold);
+}
