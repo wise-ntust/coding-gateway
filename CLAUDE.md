@@ -17,8 +17,8 @@ Always respond in Traditional Chinese (繁體中文) unless the user writes in E
 - Prefer explicit over clever — readability matters on embedded targets
 
 ### Commit Discipline
-- **After completing any roadmap item, feature, or bugfix — always ask the user whether to commit and push before doing so**
-- Never auto-commit; always confirm first
+- **完成一個段落（roadmap item、feature、bugfix）後自動 commit 並 push，不需要詢問**
+- 目的是即時記錄每次改動，保持 remote 同步
 - Commit messages: short imperative subject line (≤72 chars), blank line, then body if needed
 
 ### Build
