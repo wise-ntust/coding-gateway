@@ -222,13 +222,22 @@ static bool try_decode_block(struct rx_block *blk, int k, int tun_fd)
     blk->decoded = true;
 
     for (i = 0; i < k; i++) {
-        /* Use IP total-length (bytes 2-3) to determine actual packet size.
-         * IPv4 minimum header is 20 bytes; sanity-check before using it. */
+        /* Extract actual packet length from IP header to strip padding. */
         uint16_t ip_len = out_len[i];
         if (ip_len >= 20) {
-            uint16_t total = (uint16_t)((out[i][2] << 8) | out[i][3]);
-            if (total >= 20 && total <= ip_len)
-                ip_len = total;
+            uint8_t version = (out[i][0] >> 4) & 0x0F;
+            if (version == 4) {
+                /* IPv4: total length at bytes 2-3 (includes header) */
+                uint16_t total = (uint16_t)((out[i][2] << 8) | out[i][3]);
+                if (total >= 20 && total <= ip_len)
+                    ip_len = total;
+            } else if (version == 6 && ip_len >= 40) {
+                /* IPv6: payload length at bytes 4-5 (excludes 40-byte header) */
+                uint16_t payload = (uint16_t)((out[i][4] << 8) | out[i][5]);
+                uint16_t total = payload + 40;
+                if (total >= 40 && total <= ip_len)
+                    ip_len = total;
+            }
         }
         if (tun_write(tun_fd, out[i], ip_len) < 0)
             LOG_WARN("tun_write failed for block %u pkt %d", blk->block_id, i);
