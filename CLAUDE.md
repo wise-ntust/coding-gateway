@@ -48,7 +48,7 @@ Current status (track against `README.md`):
 - [x] Probe-based RTT and loss measurement (basic EWMA; full per-path demux is a future refinement)
 - [x] Runtime config reload (SIGHUP)
 - [x] Prometheus metrics exporter
-- [ ] Grafana dashboard
+- [x] Grafana dashboard
 - [ ] OpenWrt package feed
 
 Update the checkboxes here and in `README.md` together when items are completed.
