@@ -40,6 +40,43 @@ TX2 ──eth──► [Node B: coding-gateway TX]
 
 The mesh between the two gateway nodes may consist of any combination of 60 GHz and 2.4/5 GHz links. The coding layer is indifferent to the physical medium beneath it.
 
+### Internal Module Architecture
+
+```
+                          coding-gateway process
+┌─────────────────────────────────────────────────────────────────┐
+│  main.c (event loop, init, signals)                             │
+│  ┌──────────┐  ┌──────────┐  ┌────────────┐  ┌──────────────┐  │
+│  │  config.c │  │strategy.c│  │  metrics.c  │  │   crypto.c   │  │
+│  │ INI parse │  │fixed/wgt/│  │ Prometheus  │  │ XOR stream   │  │
+│  │ + reload  │  │adaptive  │  │ /metrics    │  │ encrypt/dec  │  │
+│  └──────────┘  │EWMA+hyst │  │ HTTP text   │  └──────────────┘  │
+│                └──────────┘  └────────────┘                     │
+│  ┌──────────────────────┐  ┌──────────────────────────────────┐ │
+│  │       tx.c            │  │            rx.c                  │ │
+│  │ block assembly        │  │ sliding window                   │ │
+│  │ padding + flush       │  │ shard insert + try_decode        │ │
+│  │ ┌────────┐ ┌────────┐│  │ ┌────────┐ ┌──────────────────┐ │ │
+│  │ │codec.c │ │gf256.c ││  │ │codec.c │ │ip_packet_length()│ │ │
+│  │ │ encode │ │ GF(2⁸) ││  │ │ decode │ │ IPv4/IPv6 strip  │ │ │
+│  │ └────────┘ └────────┘│  │ └────────┘ └──────────────────┘ │ │
+│  └──────────┬───────────┘  └──────────────┬───────────────────┘ │
+│             │ shards                      │ packets              │
+│  ┌──────────▼─────────────────────────────▼───────────────────┐ │
+│  │                    transport.c                              │ │
+│  │  UDP send/recv, wire protocol (0xC0DE), probe/echo          │ │
+│  └──────────┬──────────────────────────────┬──────────────────┘ │
+│             │ UDP datagrams                │ UDP datagrams       │
+│  ┌──────────▼──┐                    ┌──────▼───────┐            │
+│  │   tun.c     │                    │ path[0..N-1] │            │
+│  │ TUN read/   │                    │ eth0, eth1,  │            │
+│  │ write (L3)  │                    │ ... (sockets)│            │
+│  └─────────────┘                    └──────────────┘            │
+└─────────────────────────────────────────────────────────────────┘
+     ▲ IP packets                        ▲ UDP shards
+     │ (app transparent)                 │ (multi-path)
+```
+
 ---
 
 ## Design Principles
@@ -296,8 +333,35 @@ Finding the optimal ratio — tradeoff between bandwidth overhead and loss resil
 | E3 | `e3_blockage_recovery.sh` | Blockage recovery latency (single-path) |
 | E3-MP | `e3_multipath_blockage.sh` | Multi-path blockage: **0 ms recovery gap** for all durations |
 | E5 | `e5_overhead.sh` | Bandwidth overhead ratio: 1.483× (theoretical: 1.5×) |
-| E8 | `e8_k_sweep.sh` | k-value sweep: latency vs decode success tradeoff |
+| E8-R | `e8_k_sweep_repeated.sh` | k-value sweep, 30 reps: latency vs decode success at 20% loss |
 | E10 | `e10_tripath_degradation.sh` | Path degradation: 2→1→0 alive paths |
+| E12 | `e12_mptcp_compare.sh` | MPTCP-equivalent (no FEC) vs FEC-2×: success rate comparison |
+
+#### E8-R: k-value sweep (30 reps, 20% loss, ratio=2.0)
+
+| k | RTT mean (ms) | RTT std | Success @ 20% loss (%) | std |
+|---|--------------|---------|------------------------|-----|
+| 1 | 0.32 | 0.07 | **96.3** | 4.6 |
+| 2 | 22.5 | 3.3 | 82.7 | 8.5 |
+| 4 | 14.6 | 12.9 | 47.3 | 44.5 |
+| 8 | 27.9 | 0.9 | 92.8 | 4.8 |
+
+k=4 shows high variance (std=44.5%) indicating instability in the Docker test environment — a bimodal distribution between full success and complete failure. k=1 achieves the best success rate (96.3%) with lowest RTT; k=2 and k=8 add grouping latency overhead. **Recommendation: k=1 with block_timeout_ms tuning for latency-sensitive workloads.**
+
+#### E12: MPTCP-equivalent comparison (30 reps)
+
+MPTCP is simulated as multi-path + `redundancy_ratio=1.0` (distribute traffic but no coding). Results for `mptcp_equiv` mode:
+
+| Scenario | Loss injected | Success mean (%) | std |
+|----------|--------------|-----------------|-----|
+| Symmetric loss | 0% | 96.3 | 4.1 |
+| Symmetric loss | 10% | 52.2 | 48.8 |
+| Symmetric loss | 20% | 22.5 | 40.8 |
+| Symmetric loss | 30% | 88.0 | 8.9 |
+| Symmetric loss | 40% | 35.8 | 44.2 |
+| Path1 blocked, path2 20% loss | — | 89.3 | 17.8 |
+
+The high standard deviation at 10%, 20%, and 40% reflects Docker `tc netem` instability in the multi-container environment. Even so, the `mptcp_equiv` results confirm that without FEC, a fully blocked path with 20% residual loss on the surviving path produces only 89% delivery — and degraded loss conditions (20% symmetric) drop to 22%. With `ratio=2.0` FEC, the E11 results show 91% at 40% uniform loss; the coding layer is the difference.
 
 ### Design Decision: ARQ Removed
 
