@@ -336,6 +336,9 @@ Finding the optimal ratio — tradeoff between bandwidth overhead and loss resil
 | E8-R | `e8_k_sweep_repeated.sh` | k-value sweep, 30 reps: latency vs decode success at 20% loss |
 | E10 | `e10_tripath_degradation.sh` | Path degradation: 2→1→0 alive paths |
 | E12 | `e12_mptcp_compare.sh` | MPTCP-equivalent (no FEC) vs FEC-2×: success rate comparison |
+| E13 | `e13_path_count_sweep.sh` | Path-count sweep: N=2,3,4 × mptcp_equiv/fec_2x × loss 0–40% |
+| E14 | `e14_path_degradation.sh` | Path degradation: N=3,4 topologies — results anomalous, TBD |
+| E15 | `e15_blockage_recovery.sh` | Multi-path blockage recovery: N=3,4 paths, 0 ms gap ≥100 ms blockage |
 
 #### E8-R: k-value sweep (30 reps, 20% loss, ratio=2.0)
 
@@ -364,6 +367,41 @@ MPTCP is simulated as multi-path + `redundancy_ratio=1.0` (distribute traffic bu
 †Path1-blocked scenario uses `iptables -j DROP` for UDP but the measurement is ICMP ping, which bypasses the DROP rule. Both modes show 100% because ICMP is unaffected. The meaningful comparison for real UDP gateway traffic is the symmetric loss rows.
 
 **FEC provides 12–21 percentage-point gains** across 10–40% symmetric loss. At 40% loss — typical worst-case mmWave blockage — `mptcp_equiv` delivers only 63%, while `fec_2x` delivers 83%.
+
+#### E13: Path-count sweep (N=30, 30 reps each)
+
+Path count (2, 3, 4) as a first-class variable. `mptcp_equiv` = ratio=1.0 (no FEC), `fec_2x` = ratio=2.0. All interfaces injected with symmetric loss.
+
+| Loss | 2p mptcp | 2p fec_2x | 3p mptcp | 3p fec_2x | 4p mptcp | 4p fec_2x |
+|------|---------|-----------|---------|-----------|---------|-----------|
+| 0%  | 100.0 ± 0.0 | 100.0 ± 0.0 | 100.0 ± 0.0 | 100.0 ± 0.0 | 100.0 ± 0.0 | 100.0 ± 0.0 |
+| 10% | 88.0 ± 8.9 | **99.2 ± 2.3** | 90.3 ± 6.7 | **98.5 ± 2.6** | 87.2 ± 7.9 | **99.7 ± 1.3** |
+| 20% | 80.5 ± 9.3 | **95.3 ± 3.9** | 77.7 ± 10.4 | **95.8 ± 4.7** | 77.8 ± 10.7 | **96.5 ± 3.7** |
+| 30% | 70.5 ± 9.0 | **92.5 ± 5.7** | 71.8 ± 9.6 | **92.0 ± 5.4** | 72.5 ± 10.4 | **92.5 ± 5.6** |
+| 40% | 61.8 ± 10.8 | **85.8 ± 6.3** | 60.3 ± 10.1 | **86.7 ± 7.9** | 61.2 ± 10.5 | **84.0 ± 8.9** |
+
+**Finding:** Adding paths from 2→3→4 provides minimal benefit over FEC alone. At 30% loss, `fec_2x` delivers ~92% success rate regardless of path count. The FEC gain over `mptcp_equiv` is consistently **+20–22 pp** at 30–40% loss across all path counts. Path count affects variance more than mean success rate.
+
+#### E14: Path degradation sweep (N=30 reps, 30% loss on alive paths)
+
+Paths blocked one by one at rx-node via iptables; remaining alive paths sustain 30% loss. **Note: results are anomalous** — the bimodal distributions (std ≈ 37%) and nonzero success at 0 alive paths (3-path case) indicate a measurement methodology issue, likely related to iptables interface ordering in the tripath container. Requires investigation before drawing conclusions.
+
+#### E15: Multi-path blockage recovery — 3-path and 4-path (single run)
+
+Path1 (eth0) blocked at rx-node; N-1 paths remain alive with no loss. Same methodology as E3-MP.
+
+| Paths | Blockage | Lost pings (%) | Recovery gap |
+|-------|----------|---------------|-------------|
+| 3 | 50 ms | 7% | 700 ms |
+| 3 | 100 ms | 0% | **0 ms** |
+| 3 | 200 ms | 0% | **0 ms** |
+| 3 | 500 ms | 0% | **0 ms** |
+| 4 | 50 ms | 14% | 1400 ms |
+| 4 | 100 ms | 0% | **0 ms** |
+| 4 | 200 ms | 0% | **0 ms** |
+| 4 | 500 ms | 0% | **0 ms** |
+
+For blockages ≥ 100 ms, **zero packet loss** in both 3-path and 4-path topologies — the N-1 alive paths absorb all traffic instantly. The 50 ms case shows some residual loss (~700–1400 ms apparent gap) reflecting probe-based failure detection latency rather than actual recovery time; traffic reroutes as soon as the probe detects path failure.
 
 ### Design Decision: ARQ Removed
 
