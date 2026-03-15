@@ -32,7 +32,7 @@ struct gateway_config {
     int    path_count;
     int  metrics_port;
     int  log_level;          /* 0=ERR, 1=WARN, 2=INFO (default), 3=DBG */
-    char crypto_key[65];     /* 64 hex chars + NUL, empty = disabled */      /* TCP port for Prometheus /metrics (0 = disabled) */
+    char crypto_key[65];     /* 64 hex chars + NUL, empty = disabled */
 };
 
 /*

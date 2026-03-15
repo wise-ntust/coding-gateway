@@ -9,7 +9,6 @@
 struct strategy_ctx {
     struct path_state paths[MAX_PATHS];
     int   path_count;
-    int   rr_idx;
     char  type[16];
     float base_redundancy;
     float loss_threshold;
@@ -28,7 +27,13 @@ struct strategy_ctx *strategy_init(const struct gateway_config *cfg)
     ctx->path_count      = cfg->path_count;
     ctx->base_redundancy = cfg->redundancy_ratio;
     ctx->loss_threshold  = cfg->probe_loss_threshold;
-    ctx->ewma_alpha      = (cfg->ewma_alpha > 0.0f) ? cfg->ewma_alpha : 0.2f;
+    if (cfg->ewma_alpha > 0.0f && cfg->ewma_alpha <= 1.0f) {
+        ctx->ewma_alpha = cfg->ewma_alpha;
+    } else {
+        if (cfg->ewma_alpha != 0.0f)
+            LOG_WARN("ewma_alpha %.3f out of (0,1], using 0.2", cfg->ewma_alpha);
+        ctx->ewma_alpha = 0.2f;
+    }
     snprintf(ctx->type, sizeof(ctx->type), "%s", cfg->strategy_type);
 
     for (i = 0; i < cfg->path_count; i++) {
@@ -145,8 +150,11 @@ void strategy_update_probe(struct strategy_ctx *ctx,
     /* Hysteresis: only flip alive state at 1x and 0.5x threshold. */
     if (p->loss_rate > ctx->loss_threshold)
         p->alive = false;
-    if (p->loss_rate < ctx->loss_threshold * 0.5f)
+    if (p->loss_rate < ctx->loss_threshold * 0.5f) {
         p->alive = true;
+        ctx->path_credit[path_idx] = (int)roundf(p->weight_current);
+        if (ctx->path_credit[path_idx] < 1) ctx->path_credit[path_idx] = 1;
+    }
 }
 
 struct path_state *strategy_get_path_state(struct strategy_ctx *ctx, int idx)
@@ -166,7 +174,13 @@ void strategy_reload(struct strategy_ctx *ctx, const struct gateway_config *cfg)
 
     ctx->base_redundancy = cfg->redundancy_ratio;
     ctx->loss_threshold  = cfg->probe_loss_threshold;
-    ctx->ewma_alpha      = (cfg->ewma_alpha > 0.0f) ? cfg->ewma_alpha : 0.2f;
+    if (cfg->ewma_alpha > 0.0f && cfg->ewma_alpha <= 1.0f) {
+        ctx->ewma_alpha = cfg->ewma_alpha;
+    } else {
+        if (cfg->ewma_alpha != 0.0f)
+            LOG_WARN("ewma_alpha %.3f out of (0,1], using 0.2", cfg->ewma_alpha);
+        ctx->ewma_alpha = 0.2f;
+    }
     snprintf(ctx->type, sizeof(ctx->type), "%s", cfg->strategy_type);
 
     /* Update per-path config while preserving runtime state. */
