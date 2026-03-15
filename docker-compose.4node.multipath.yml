@@ -1,0 +1,83 @@
+services:
+  client-tx:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.client
+    cap_add:
+      - NET_ADMIN
+    networks:
+      lan_tx:
+        ipv4_address: 10.10.0.2
+    command: >
+      sh -c "ip route add 10.20.0.0/24 via 10.10.0.3 &&
+             sleep infinity"
+
+  ap-tx:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.test
+    cap_add:
+      - NET_ADMIN
+    devices:
+      - /dev/net/tun
+    networks:
+      lan_tx:
+        ipv4_address: 10.10.0.3
+      mmwave1:
+        ipv4_address: 172.20.0.2
+      mmwave2:
+        ipv4_address: 172.21.0.2
+    command: ["/app/coding-gateway", "--config", "/app/config/4node-ap-tx.conf"]
+
+  ap-rx:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.test
+    cap_add:
+      - NET_ADMIN
+    devices:
+      - /dev/net/tun
+    networks:
+      mmwave1:
+        ipv4_address: 172.20.0.3
+      mmwave2:
+        ipv4_address: 172.21.0.3
+      lan_rx:
+        ipv4_address: 10.20.0.3
+    command: ["/app/coding-gateway", "--config", "/app/config/4node-ap-rx.conf"]
+
+  client-rx:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.client
+    cap_add:
+      - NET_ADMIN
+    networks:
+      lan_rx:
+        ipv4_address: 10.20.0.2
+    command: >
+      sh -c "ip route add 10.10.0.0/24 via 10.20.0.3 &&
+             iperf3 -s -D &&
+             sleep infinity"
+
+networks:
+  lan_tx:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 10.10.0.0/24
+  mmwave1:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/24
+  mmwave2:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.21.0.0/24
+  lan_rx:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 10.20.0.0/24

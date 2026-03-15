@@ -42,11 +42,23 @@ static void test_missing_file(void)
     assert(ret == -1);
 }
 
+static void test_forward_section(void)
+{
+    struct gateway_config cfg;
+    int ret = config_load("config/4node-forward-test.conf", &cfg);
+    assert(ret == 0);
+    assert(cfg.ip_forward == true);
+    assert(cfg.forward_route_count == 2);
+    assert(strcmp(cfg.forward_routes[0], "10.20.0.0/24") == 0);
+    assert(strcmp(cfg.forward_routes[1], "192.168.99.0/24") == 0);
+}
+
 int main(void)
 {
     test_load_tx();
     test_load_rx();
     test_missing_file();
+    test_forward_section();
     printf("config: all tests passed\n");
     return 0;
 }

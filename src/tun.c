@@ -142,3 +142,57 @@ ssize_t tun_write(int fd, const uint8_t *buf, size_t len)
 {
     return write(fd, buf, len);
 }
+
+int tun_apply_forward(const char *tun_name, const struct gateway_config *cfg)
+{
+#ifdef __linux__
+    FILE *f;
+    char  cmd[128];
+    int   i, rc = 0;
+
+    if (!cfg->ip_forward)
+        return 0;
+
+    /* Enable kernel IP forwarding */
+    f = fopen("/proc/sys/net/ipv4/ip_forward", "w");
+    if (!f) {
+        LOG_WARN("cannot open /proc/sys/net/ipv4/ip_forward");
+        rc = -1;
+    } else {
+        fputs("1\n", f);
+        fclose(f);
+        LOG_INFO("ip_forward enabled");
+    }
+
+    /* Allow forwarded traffic through TUN (idempotent: check before insert) */
+    snprintf(cmd, sizeof(cmd),
+             "iptables -C FORWARD -i %s -j ACCEPT 2>/dev/null || "
+             "iptables -I FORWARD -i %s -j ACCEPT", tun_name, tun_name);
+    if (system(cmd) != 0)
+        LOG_WARN("iptables FORWARD -i %s: non-fatal", tun_name);
+
+    snprintf(cmd, sizeof(cmd),
+             "iptables -C FORWARD -o %s -j ACCEPT 2>/dev/null || "
+             "iptables -I FORWARD -o %s -j ACCEPT", tun_name, tun_name);
+    if (system(cmd) != 0)
+        LOG_WARN("iptables FORWARD -o %s: non-fatal", tun_name);
+
+    /* Add declared routes via TUN interface (replace = idempotent on reload) */
+    for (i = 0; i < cfg->forward_route_count; i++) {
+        snprintf(cmd, sizeof(cmd), "ip route replace %s dev %s",
+                 cfg->forward_routes[i], tun_name);
+        if (system(cmd) != 0) {
+            LOG_WARN("ip route replace %s dev %s failed",
+                     cfg->forward_routes[i], tun_name);
+            rc = -1;
+        } else {
+            LOG_INFO("route: %s dev %s", cfg->forward_routes[i], tun_name);
+        }
+    }
+    return rc;
+#else
+    (void)tun_name;
+    (void)cfg;
+    return 0;
+#endif
+}

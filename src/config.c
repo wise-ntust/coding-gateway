@@ -129,6 +129,18 @@ int config_load(const char *path, struct gateway_config *cfg)
                     cfg->probe_loss_threshold = (float)atof(val);
                 else if (!strcmp(key, "ewma_alpha"))
                     cfg->ewma_alpha = (float)atof(val);
+            } else if (strcmp(section, "forward") == 0) {
+                if (!strcmp(key, "ip_forward"))
+                    cfg->ip_forward = (strcmp(val, "true") == 0);
+                else if (!strcmp(key, "route") &&
+                         cfg->forward_route_count < 8) {
+                    size_t rlen = strlen(val);
+                    if (rlen >= 48) rlen = 47;
+                    memcpy(cfg->forward_routes[cfg->forward_route_count],
+                           val, rlen);
+                    cfg->forward_routes[cfg->forward_route_count][rlen] = '\0';
+                    cfg->forward_route_count++;
+                }
             } else if (cur_path != NULL) {
                 if      (!strcmp(key, "interface"))
                     strncpy(cur_path->interface, val,

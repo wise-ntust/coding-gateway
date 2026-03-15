@@ -95,6 +95,8 @@ int main(int argc, char *argv[])
         close(tun_fd);
         return 1;
     }
+    if (tun_apply_forward(cfg.tun_name, &cfg) != 0)
+        LOG_WARN("tun_apply_forward: some routes may be missing");
 
     tctx = transport_init(&cfg, (uint16_t)cfg.listen_port);
     if (!tctx) {

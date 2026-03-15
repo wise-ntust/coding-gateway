@@ -203,6 +203,23 @@ enabled = false             # disabled = excluded from shard distribution
 
 Single-path mode and multi-path mode are the same binary, the same configuration file format, and the same running process. Enabling additional paths requires only setting `enabled = true` and optionally adjusting weights.
 
+### IP Forwarding — `[forward]`
+
+When coding-gateway acts as an access-point relay (packets from a LAN client must traverse the tunnel and emerge on the far LAN), add a `[forward]` section:
+
+```ini
+[forward]
+ip_forward = true
+route = 10.20.0.0/24   # CIDR of the far-side LAN; repeat for multiple routes
+```
+
+On startup, the gateway automatically:
+1. Writes `1` to `/proc/sys/net/ipv4/ip_forward`
+2. Inserts `iptables FORWARD ACCEPT` rules for the TUN interface
+3. Runs `ip route replace <CIDR> dev <tun_name>` for each declared route
+
+No shell scripts needed. The gateway reads the config and applies forwarding as part of normal init.
+
 ---
 
 ## Building
@@ -340,6 +357,7 @@ Finding the optimal ratio — tradeoff between bandwidth overhead and loss resil
 | E14 | `e14_path_degradation.sh` | Path degradation: N=3,4 topologies — results anomalous, TBD |
 | E15 | `e15_blockage_recovery.sh` | Multi-path blockage recovery: N=3,4 paths, 0 ms gap ≥100 ms blockage |
 | E16 | `e16_k_multipath_sweep.sh` | k-sweep (k=1,2,4) × N-path (2,3,4) × ratio=2.0: symmetric + asymmetric loss |
+| E17 | `e17_iperf_4node.sh` | iperf3 4-node end-to-end throughput: FEC vs no-FEC, 0–40% path loss |
 
 #### E8-R: k-value sweep (30 reps, 20% loss, ratio=2.0)
 
@@ -432,6 +450,33 @@ k has minimal impact under symmetric loss — FEC effectiveness is bounded by pe
 **Limitation:** `block_timeout_ms=10` with low-rate ping traffic (200 ms inter-packet) causes blocks to flush with a single packet before reaching k=2 or k=4, so the coverage benefit is only fully realised at traffic rates ≥ k / block_timeout_ms. The probe_loss_threshold=0.3 also interacts with the 30% test loss, intermittently marking paths dead and concentrating traffic on path0 (explaining k=1 N=3 reaching 100% despite theoretical prediction of ~97%).
 
 **Practical recommendation:** For N-path deployments with heterogeneous link quality, set k ≥ N/2 and ensure block_timeout_ms × (expected packet rate) ≥ k so blocks fill before flushing.
+
+---
+
+### 4-Node AP Topology
+
+The `docker-compose.4node.multipath.yml` file provides a realistic deployment topology with four containers:
+
+```
+client-tx (10.10.0.2)
+      │  lan_tx (10.10.0.0/24)
+ap-tx (10.10.0.3) ── TUN 10.0.0.1/30 ──→ [RLNC encoded over mmwave1+mmwave2]
+      │  mmwave1 (172.20.0.0/24)
+      │  mmwave2 (172.21.0.0/24)
+ap-rx (10.20.0.3) ←── TUN 10.0.0.2/30 ─── [decoded]
+      │  lan_rx (10.20.0.0/24)
+client-rx (10.20.0.2)
+```
+
+Both AP nodes use `[forward]` in their configs — the gateway configures IP forwarding and routes automatically on startup. Client containers only add a single `ip route add` pointing to their local AP.
+
+#### E17: iperf3 end-to-end throughput (pending results)
+
+Script: `scripts/eval/e17_iperf_4node.sh`
+
+Measures UDP throughput and loss from `client-tx → client-rx` through the coded tunnel. Two modes: `no_fec` (ratio=1.0) and `fec_2x` (ratio=2.0), symmetric loss {0, 10, 20, 30, 40}% on the mmWave paths.
+
+---
 
 ### Design Decision: ARQ Removed
 

@@ -33,6 +33,10 @@ struct gateway_config {
     int  metrics_port;
     int  log_level;          /* 0=ERR, 1=WARN, 2=INFO (default), 3=DBG */
     char crypto_key[65];     /* 64 hex chars + NUL, empty = disabled */
+    /* [forward] section — IP forwarding + static routes */
+    bool   ip_forward;
+    char   forward_routes[8][48]; /* CIDR strings, e.g. "10.20.0.0/24" */
+    int    forward_route_count;
 };
 
 /*
