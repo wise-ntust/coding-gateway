@@ -6,6 +6,7 @@
 #include "strategy.h"
 #include "crypto.h"
 #include "metrics.h"
+#include "common.h"
 
 /* ------------------------------------------------------------------ */
 /* Helper: build an all-dead two-path config                           */
@@ -59,10 +60,11 @@ static void test_add_pkt_not_full(void)
     memset(pkt, 0, sizeof(pkt));
     tx_block_init(&blk, 1);
 
-    for (i = 0; i < k - 1; i++)
+    for (i = 0; i < k - 1; i++) {
         ret = tx_block_add_pkt(&blk, pkt, 64, k);
+        assert(!ret);
+    }
 
-    assert(ret == false);
     assert(blk.pkt_count == k - 1);
 }
 
@@ -139,15 +141,22 @@ static void test_flush_encodes_with_dead_paths(void)
     tx_block_flush(&blk, NULL, sctx, k, NULL);
 
     assert(g_metrics.blocks_encoded == before + 1);
+    assert(g_metrics.shards_sent[0] == 0);
+    assert(g_metrics.shards_sent[1] == 0);
 
     strategy_free(sctx);
 }
 
 /* ------------------------------------------------------------------ */
 /* 7. Flush with crypto enabled: completes without crash,              */
-/*    blocks_encoded increments (encryption ran)                       */
+/*    blocks_encoded increments, no network I/O occurs                 */
+/*                                                                     */
+/*    NOTE: tx_block_flush encrypts shards in place then sends via     */
+/*    transport. Because all paths are dead no bytes are transmitted,  */
+/*    so we cannot inspect the encrypted shard data from outside.      */
+/*    Full encryption correctness is covered by test_crypto.           */
 /* ------------------------------------------------------------------ */
-static void test_flush_crypto_changes_data(void)
+static void test_flush_with_crypto_enabled(void)
 {
     struct gateway_config cfg  = make_dead_cfg();
     struct strategy_ctx  *sctx = strategy_init(&cfg);
@@ -172,7 +181,55 @@ static void test_flush_crypto_changes_data(void)
     tx_block_flush(&blk, NULL, sctx, k, &crypto);
 
     assert(g_metrics.blocks_encoded == before + 1);
+    assert(g_metrics.shards_sent[0] == 0);
+    assert(g_metrics.shards_sent[1] == 0);
 
+    strategy_free(sctx);
+}
+
+/* ------------------------------------------------------------------ */
+/* 8. Flush on an empty block must not increment blocks_encoded        */
+/* ------------------------------------------------------------------ */
+static void test_flush_empty(void)
+{
+    struct tx_block blk;
+    struct gateway_config cfg = make_dead_cfg();
+    struct strategy_ctx *sctx = strategy_init(&cfg);
+    struct crypto_ctx crypto;
+    uint64_t before;
+
+    crypto_init(&crypto, NULL);
+    tx_block_init(&blk, 1);
+    before = g_metrics.blocks_encoded;
+    tx_block_flush(&blk, NULL, sctx, 4, &crypto);
+    assert(g_metrics.blocks_encoded == before); /* empty block: no flush */
+    strategy_free(sctx);
+}
+
+/* ------------------------------------------------------------------ */
+/* 9. Padding of variable-length packets: flush must not crash         */
+/*    and blocks_encoded increments (encoding completed cleanly)       */
+/* ------------------------------------------------------------------ */
+static void test_flush_padding(void)
+{
+    struct tx_block blk;
+    struct gateway_config cfg = make_dead_cfg();
+    struct strategy_ctx *sctx = strategy_init(&cfg);
+    struct crypto_ctx crypto;
+    uint8_t short_pkt[40], long_pkt[100];
+    uint64_t before;
+
+    memset(short_pkt, 0xAA, sizeof(short_pkt));
+    memset(long_pkt, 0xBB, sizeof(long_pkt));
+    crypto_init(&crypto, NULL);
+    tx_block_init(&blk, 5);
+    tx_block_add_pkt(&blk, short_pkt, 40, 4);
+    tx_block_add_pkt(&blk, long_pkt, 100, 4);
+    before = g_metrics.blocks_encoded;
+    tx_block_flush(&blk, NULL, sctx, 4, &crypto);
+    assert(g_metrics.blocks_encoded == before + 1);
+    assert(g_metrics.shards_sent[0] == 0);
+    assert(g_metrics.shards_sent[1] == 0);
     strategy_free(sctx);
 }
 
@@ -186,8 +243,15 @@ int main(void)
     test_add_pkt_full();
     test_needs_flush_empty();
     test_needs_flush_elapsed();
+
+    /* Suppress WARN noise about no alive paths during flush tests. */
+    g_log_level = LOG_LVL_ERR;
+
     test_flush_encodes_with_dead_paths();
-    test_flush_crypto_changes_data();
+    test_flush_with_crypto_enabled();
+    test_flush_empty();
+    test_flush_padding();
+
     printf("tx: all tests passed\n");
     return 0;
 }
