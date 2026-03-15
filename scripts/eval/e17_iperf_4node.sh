@@ -1,11 +1,17 @@
 #!/bin/sh
-# E17: iperf3 4-node throughput under path loss — FEC vs no-FEC
+# E17: 4-node tunnel performance — FEC vs no-FEC
 # Usage: e17_iperf_4node.sh [RESULTS_DIR] [REPS]
 #
 # Topology: client-tx → ap-tx →[mmWave]→ ap-rx → client-rx
-# Measures iperf3 UDP throughput (Mbit/s) and loss (%) end-to-end.
+# Metrics:
+#   throughput_mbps  — iperf3 UDP at 0% loss only (server started once per mode)
+#   tunnel_loss_pct  — ping -c 100 end-to-end IP loss (primary FEC metric)
 # Two modes: ratio=1.0 (no FEC) and ratio=2.0 (FEC 2x).
 # Symmetric loss applied on ap-tx eth1+eth2 (the mmWave paths).
+#
+# Note: iperf3 on Alpine ARM64 hangs when TCP control channel
+# experiences packet loss; throughput is only measured at 0% path loss.
+# tunnel_loss_pct via ping is the primary metric at all loss levels.
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 . "$SCRIPT_DIR/common.sh"
@@ -26,7 +32,7 @@ cleanup() {
 trap cleanup EXIT
 CURRENT_COMPOSE="$COMPOSE"
 
-echo "mode,loss_pct,rep,throughput_mbps,loss_pct_iperf" > "$CSV"
+echo "mode,loss_pct,rep,throughput_mbps,tunnel_loss_pct" > "$CSV"
 
 for ratio in 1.0 2.0; do
     if [ "$ratio" = "1.0" ]; then MODE="no_fec"; else MODE="fec_2x"; fi
@@ -35,7 +41,7 @@ for ratio in 1.0 2.0; do
 
     docker compose -f "$COMPOSE" down 2>/dev/null || true
     docker compose -f "$COMPOSE" up -d --build 2>/dev/null
-    sleep 8
+    sleep 10
 
     # Hot-reload redundancy_ratio on both AP nodes
     docker compose -f "$COMPOSE" exec -T ap-tx \
@@ -70,26 +76,29 @@ for ratio in 1.0 2.0; do
 
         rep=1
         while [ "$rep" -le "$REPS" ]; do
-            # iperf3 UDP 10 Mbit/s for 5 seconds, JSON output
-            RESULT=$(docker compose -f "$COMPOSE" exec -T client-tx \
-                iperf3 -c 10.20.0.2 -u -b 10M -t 5 -J 2>/dev/null || echo "")
+            # --- Throughput: iperf3 UDP only at 0% loss ---
+            THROUGHPUT=0.00
+            if [ "$loss" = "0" ]; then
+                IPERF_OUT=$(docker compose -f "$COMPOSE" exec -T client-tx \
+                    timeout 10 iperf3 -c 10.20.0.2 -u -b 10M -t 5 -l 1300 -J \
+                    2>/dev/null || echo "")
+                THROUGHPUT=$(echo "$IPERF_OUT" | awk '
+                    /"bits_per_second"/ { gsub(/[^0-9.]/,"",$NF); bps=$NF+0 }
+                    END { printf "%.2f", bps/1e6 }')
+                [ -z "$THROUGHPUT" ] && THROUGHPUT=0.00
+                sleep 2
+            fi
 
-            # Extract throughput (bits_per_second → Mbit/s) and lost_percent
-            # These fields appear in the sum/receiver section of iperf3 JSON
-            THROUGHPUT=$(echo "$RESULT" | awk '
-                /"bits_per_second"/ {
-                    gsub(/[^0-9.]/,"",$NF); bps=$NF+0
-                }
-                END { printf "%.2f", bps/1e6 }')
-            LOSS_I=$(echo "$RESULT" | awk '
-                /"lost_percent"/ {
-                    gsub(/[^0-9.]/,"",$NF); lp=$NF+0
-                }
-                END { printf "%.1f", lp }')
-            [ -z "$THROUGHPUT" ] && THROUGHPUT=0
-            [ -z "$LOSS_I" ]     && LOSS_I=100
+            # --- Loss: ping 100 packets at 5 pkt/s (20 seconds) ---
+            PING_OUT=$(docker compose -f "$COMPOSE" exec -T client-tx \
+                ping -c 100 -i 0.2 -W 2 10.20.0.2 2>/dev/null || echo "")
+            TUNNEL_LOSS=$(echo "$PING_OUT" | awk '
+                /packet loss/ {
+                    for(i=1;i<=NF;i++) if($i~/%/) { gsub(/%/,"",$i); print $i+0; exit }
+                }')
+            [ -z "$TUNNEL_LOSS" ] && TUNNEL_LOSS=100
 
-            echo "${MODE},${loss},${rep},${THROUGHPUT},${LOSS_I}" >> "$CSV"
+            echo "${MODE},${loss},${rep},${THROUGHPUT},${TUNNEL_LOSS}" >> "$CSV"
             rep=$((rep + 1))
         done
         echo "  [${MODE}] loss=${loss}%: ${REPS} reps done"
@@ -98,7 +107,7 @@ for ratio in 1.0 2.0; do
     docker compose -f "$COMPOSE" down 2>/dev/null || true
 done
 
-echo "mode,loss_pct,mean_mbps,std_mbps,mean_loss,n" > "$SUMMARY"
+echo "mode,loss_pct,mean_mbps,std_mbps,mean_tunnel_loss,n" > "$SUMMARY"
 awk -F, 'NR>1 {
     key=$1","$2
     sum[key]+=$4; sumsq[key]+=$4*$4
@@ -110,7 +119,7 @@ awk -F, 'NR>1 {
         ml=lsum[k]/n[k]
         printf "%s,%.2f,%.2f,%.1f,%d\n", k, m, s, ml, n[k]
     }
-}' "$CSV" | sort -t, -k1 -k2 -n >> "$SUMMARY"
+}' "$CSV" | sort -t, -k1,1 -k2,2n >> "$SUMMARY"
 
 echo "[E17] Done. Summary:"
 cat "$SUMMARY"

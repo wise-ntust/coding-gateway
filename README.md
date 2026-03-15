@@ -470,11 +470,25 @@ client-rx (10.20.0.2)
 
 Both AP nodes use `[forward]` in their configs — the gateway configures IP forwarding and routes automatically on startup. Client containers only add a single `ip route add` pointing to their local AP.
 
-#### E17: iperf3 end-to-end throughput (pending results)
+#### E17: 4-node end-to-end performance — FEC vs no-FEC (5 reps, 100 pings/measurement)
 
 Script: `scripts/eval/e17_iperf_4node.sh`
 
-Measures UDP throughput and loss from `client-tx → client-rx` through the coded tunnel. Two modes: `no_fec` (ratio=1.0) and `fec_2x` (ratio=2.0), symmetric loss {0, 10, 20, 30, 40}% on the mmWave paths.
+Topology: `client-tx → ap-tx →[coded mmWave]→ ap-rx → client-rx`
+Two modes: `no_fec` (ratio=1.0) and `fec_2x` (ratio=2.0), symmetric loss {0,10,20,30,40}% on the mmWave paths. Primary metric: end-to-end IP packet loss rate (ping 100 pkts). Secondary metric: iperf3 UDP throughput at 0% loss.
+
+| path_loss | no_fec tunnel_loss | fec_2x tunnel_loss |
+|-----------|-------------------|--------------------|
+| 0%        | 0.0%              | 0.0%               |
+| 10%       | 21.6%             | **0.0%**           |
+| 20%       | 34.4%             | **3.6%**           |
+| 30%       | 47.8%             | **6.8%**           |
+| 40%       | 62.2%             | **15.8%**          |
+
+Throughput at 0% path loss: no_fec = 9.99 Mbps, fec_2x = 10.00 Mbps (no overhead penalty).
+At 10% path loss, FEC 2× fully absorbs the loss (0% tunnel loss) while no-FEC passes through ~22% IP loss. At 40% path loss, FEC 2× reduces tunnel loss from 62% to 16%.
+
+> **Note:** iperf3 throughput at 10%+ loss is not reported — iperf3 on Alpine ARM64 hangs when its TCP control channel experiences packet loss. The ping-based loss rate is the reliable metric for high-loss conditions.
 
 ---
 
