@@ -86,6 +86,14 @@ else
         iptables -A INPUT -i eth0 -p udp -j DROP
     sleep 2
     measure_success "$COMPOSE" 3 0
+
+    # Clean up iptables rules before teardown
+    docker compose -f "$COMPOSE" exec -T rx-node \
+        iptables -D INPUT -i eth0 -p udp -j DROP 2>/dev/null || true
+    docker compose -f "$COMPOSE" exec -T rx-node \
+        iptables -D INPUT -i eth1 -p udp -j DROP 2>/dev/null || true
+    docker compose -f "$COMPOSE" exec -T rx-node \
+        iptables -D INPUT -i eth2 -p udp -j DROP 2>/dev/null || true
 fi
 docker compose -f "$COMPOSE" down 2>/dev/null || true
 
@@ -135,6 +143,16 @@ else
         iptables -A INPUT -i eth0 -p udp -j DROP
     sleep 2
     measure_success "$COMPOSE" 4 0
+
+    # Clean up iptables rules before teardown
+    docker compose -f "$COMPOSE" exec -T rx-node \
+        iptables -D INPUT -i eth0 -p udp -j DROP 2>/dev/null || true
+    docker compose -f "$COMPOSE" exec -T rx-node \
+        iptables -D INPUT -i eth1 -p udp -j DROP 2>/dev/null || true
+    docker compose -f "$COMPOSE" exec -T rx-node \
+        iptables -D INPUT -i eth2 -p udp -j DROP 2>/dev/null || true
+    docker compose -f "$COMPOSE" exec -T rx-node \
+        iptables -D INPUT -i eth3 -p udp -j DROP 2>/dev/null || true
 fi
 docker compose -f "$COMPOSE" down 2>/dev/null || true
 

@@ -65,6 +65,7 @@ run_blockage_test() {
             for(i=1;i<=NF;i++) if($i~/%/){sub(/%/,"",$i); printf "%d",int($i+0.5); exit}
         }')
         [ -z "$LOSS_PCT" ] && LOSS_PCT=100
+        # ping -c 100 so loss% == lost packet count; GAP_MS = lost packets * 100ms interval
         LOST_PINGS=$LOSS_PCT
         GAP_MS=$((LOST_PINGS * 100))
 

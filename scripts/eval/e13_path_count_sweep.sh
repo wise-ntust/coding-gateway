@@ -18,8 +18,9 @@ SUMMARY="$RESULTS_DIR/e13_path_count_sweep_summary.csv"
 
 REPO="$(dirname "$(dirname "$SCRIPT_DIR")")"
 
+CURRENT_COMPOSE=""
 cleanup() {
-    docker compose -f "$CURRENT_COMPOSE" down 2>/dev/null || true
+    [ -n "$CURRENT_COMPOSE" ] && docker compose -f "$CURRENT_COMPOSE" down 2>/dev/null || true
 }
 trap cleanup EXIT
 
