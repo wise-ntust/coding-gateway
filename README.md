@@ -339,6 +339,7 @@ Finding the optimal ratio — tradeoff between bandwidth overhead and loss resil
 | E13 | `e13_path_count_sweep.sh` | Path-count sweep: N=2,3,4 × mptcp_equiv/fec_2x × loss 0–40% |
 | E14 | `e14_path_degradation.sh` | Path degradation: N=3,4 topologies — results anomalous, TBD |
 | E15 | `e15_blockage_recovery.sh` | Multi-path blockage recovery: N=3,4 paths, 0 ms gap ≥100 ms blockage |
+| E16 | `e16_k_multipath_sweep.sh` | k-sweep (k=1,2,4) × N-path (2,3,4) × ratio=2.0: symmetric + asymmetric loss |
 
 #### E8-R: k-value sweep (30 reps, 20% loss, ratio=2.0)
 
@@ -402,6 +403,35 @@ Path1 (eth0) blocked at rx-node; N-1 paths remain alive with no loss. Same metho
 | 4 | 500 ms | 0% | **0 ms** |
 
 For blockages ≥ 100 ms, **zero packet loss** in both 3-path and 4-path topologies — the N-1 alive paths absorb all traffic instantly. The 50 ms case shows some residual loss (~700–1400 ms apparent gap) reflecting probe-based failure detection latency rather than actual recovery time; traffic reroutes as soon as the probe detects path failure.
+
+#### E16: k × N-path sweep (N=30 reps, ratio=2.0)
+
+Two scenarios: **symmetric** (all N paths at equal loss%) and **path0_good** (eth0 at 0% loss, remaining paths at 30%).
+
+**Scenario A — Symmetric loss, 4-path topology:**
+
+| Loss | k=1 | k=2 | k=4 |
+|------|-----|-----|-----|
+| 0%  | 100.0 ± 0.0 | 100.0 ± 0.0 | 100.0 ± 0.0 |
+| 20% | 95.7 ± 4.2 | 97.5 ± 3.4 | **98.8 ± 2.5** |
+| 30% | 91.5 ± 7.3 | 91.7 ± 4.9 | **94.3 ± 5.1** |
+| 40% | 84.7 ± 9.2 | 83.0 ± 8.8 | 83.7 ± 6.5 |
+
+k has minimal impact under symmetric loss — FEC effectiveness is bounded by per-shard loss probability regardless of block size.
+
+**Scenario B — path0 at 0% loss, other paths at 30% loss:**
+
+| k | 2-path | 3-path | 4-path |
+|---|--------|--------|--------|
+| k=1 | **100.0 ± 0.0** | **100.0 ± 0.0** | 92.5 ± 6.3 |
+| k=2 | **100.0 ± 0.0** | 97.0 ± 3.3 | 98.0 ± 2.8 |
+| k=4 | **100.0 ± 0.0** | 99.2 ± 1.9 | **99.3 ± 1.7** |
+
+**Finding — Coverage Theorem (directional):** When k × ratio ≥ N, WRR distributes at least one shard to every path per block, so a 0%-loss path guarantees decode. k=4 with ratio=2.0 produces 8 shards — two per path on a 4-path topology — yielding 99.3% vs 92.5% for k=1.
+
+**Limitation:** `block_timeout_ms=10` with low-rate ping traffic (200 ms inter-packet) causes blocks to flush with a single packet before reaching k=2 or k=4, so the coverage benefit is only fully realised at traffic rates ≥ k / block_timeout_ms. The probe_loss_threshold=0.3 also interacts with the 30% test loss, intermittently marking paths dead and concentrating traffic on path0 (explaining k=1 N=3 reaching 100% despite theoretical prediction of ~97%).
+
+**Practical recommendation:** For N-path deployments with heterogeneous link quality, set k ≥ N/2 and ensure block_timeout_ms × (expected packet rate) ≥ k so blocks fill before flushing.
 
 ### Design Decision: ARQ Removed
 
