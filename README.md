@@ -350,18 +350,20 @@ k=4 shows high variance (std=44.5%) indicating instability in the Docker test en
 
 #### E12: MPTCP-equivalent comparison (30 reps)
 
-MPTCP is simulated as multi-path + `redundancy_ratio=1.0` (distribute traffic but no coding). Results for `mptcp_equiv` mode:
+MPTCP is simulated as multi-path + `redundancy_ratio=1.0` (distribute traffic but no coding). `fec_2x` uses `ratio=2.0` on the same topology.
 
-| Scenario | Loss injected | Success mean (%) | std |
-|----------|--------------|-----------------|-----|
-| Symmetric loss | 0% | 96.3 | 4.1 |
-| Symmetric loss | 10% | 52.2 | 48.8 |
-| Symmetric loss | 20% | 22.5 | 40.8 |
-| Symmetric loss | 30% | 88.0 | 8.9 |
-| Symmetric loss | 40% | 35.8 | 44.2 |
-| Path1 blocked, path2 20% loss | — | 89.3 | 17.8 |
+| Scenario | Loss injected | mptcp_equiv (%) | std | fec_2x (%) | std | FEC gain |
+|----------|--------------|----------------|-----|------------|-----|----------|
+| Symmetric | 0% | 100.0 | 0.0 | 100.0 | 0.0 | — |
+| Symmetric | 10% | 87.0 | 6.9 | **99.0** | 2.0 | +12 pp |
+| Symmetric | 20% | 80.7 | 9.0 | **96.0** | 4.6 | +15 pp |
+| Symmetric | 30% | 68.8 | 9.0 | **89.3** | 7.4 | +21 pp |
+| Symmetric | 40% | 63.3 | 10.5 | **83.2** | 8.2 | +20 pp |
+| Path1 blocked† | 20% on path2 | 100.0 | 0.0 | 100.0 | 0.0 | — |
 
-The high standard deviation at 10%, 20%, and 40% reflects Docker `tc netem` instability in the multi-container environment. Even so, the `mptcp_equiv` results confirm that without FEC, a fully blocked path with 20% residual loss on the surviving path produces only 89% delivery — and degraded loss conditions (20% symmetric) drop to 22%. With `ratio=2.0` FEC, the E11 results show 91% at 40% uniform loss; the coding layer is the difference.
+†Path1-blocked scenario uses `iptables -j DROP` for UDP but the measurement is ICMP ping, which bypasses the DROP rule. Both modes show 100% because ICMP is unaffected. The meaningful comparison for real UDP gateway traffic is the symmetric loss rows.
+
+**FEC provides 12–21 percentage-point gains** across 10–40% symmetric loss. At 40% loss — typical worst-case mmWave blockage — `mptcp_equiv` delivers only 63%, while `fec_2x` delivers 83%.
 
 ### Design Decision: ARQ Removed
 
