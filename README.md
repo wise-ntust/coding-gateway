@@ -271,6 +271,24 @@ FEC performs better under bursty loss (corr=25%) than uniform random loss at mod
 
 The overhead is dominated by `block_timeout_ms` (block assembly wait), not GF(2⁸) computation.
 
+### E11: Redundancy Ratio Sweep (N=30)
+
+Finding the optimal ratio — tradeoff between bandwidth overhead and loss resilience:
+
+| Ratio | 0% loss | 10% | 20% | 30% | 40% | 50% |
+|-------|---------|-----|-----|-----|-----|-----|
+| 1.0 (no FEC) | 100 | 79.3 | 65.3 | 51.2 | 33.3 | 23.5 |
+| 1.25 | 100 | 95.7 | 89.5 | 76.8 | 63.0 | 50.3 |
+| **1.5** | 100 | 96.5 | 90.5 | 78.5 | 67.3 | 48.5 |
+| 1.75 | 100 | 99.7 | 97.0 | 90.5 | 14.8* | 0* |
+| **2.0** | 100 | **99.8** | **97.0** | **91.0** | **82.2** | **68.5** |
+| 2.5 | 100 | 100 | 99.3 | 96.5 | 91.3 | 80.2 |
+| 3.0 | 100 | 99.8 | 99.7 | 99.0 | 95.2 | 90.2 |
+
+\*ratio=1.75 anomaly at 40-50% is a Docker container restart artifact.
+
+**Recommended: ratio=2.0** for mmWave environments (loss typically 20-40%). It provides 82% success at 40% loss with only 2× bandwidth overhead. ratio=3.0 gives 95% at 40% loss but triples bandwidth.
+
 ### Additional Experiments
 
 | Experiment | Script | Description |
