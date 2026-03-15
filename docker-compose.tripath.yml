@@ -1,0 +1,51 @@
+services:
+  tx-node:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.test
+    cap_add:
+      - NET_ADMIN
+    devices:
+      - /dev/net/tun
+    networks:
+      testnet1:
+        ipv4_address: 172.20.0.2
+      testnet2:
+        ipv4_address: 172.21.0.2
+      testnet3:
+        ipv4_address: 172.22.0.2
+    command: ["/app/coding-gateway", "--config", "/app/config/tripath-tx.conf"]
+
+  rx-node:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.test
+    cap_add:
+      - NET_ADMIN
+    devices:
+      - /dev/net/tun
+    networks:
+      testnet1:
+        ipv4_address: 172.20.0.3
+      testnet2:
+        ipv4_address: 172.21.0.3
+      testnet3:
+        ipv4_address: 172.22.0.3
+    command: ["/app/coding-gateway", "--config", "/app/config/tripath-rx.conf"]
+
+networks:
+  testnet1:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/24
+  testnet2:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.21.0.0/24
+  testnet3:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.22.0.0/24
