@@ -445,13 +445,15 @@ To import the dashboard, go to Grafana → Dashboards → Import and upload `das
 - [x] Systematic encode / decode
 - [x] TUN/TAP interface
 - [x] UDP multi-path transport
-- [x] Fixed and weighted strategies
+- [x] Fixed and weighted strategies (credit-based WRR; configurable per-path weight)
 - [x] Adaptive strategy with loss feedback
-- [x] Probe-based RTT and loss measurement (basic EWMA; full per-path demux is a future refinement)
+- [x] Probe-based RTT and loss measurement (EWMA; alpha configurable via `ewma_alpha`)
 - [x] Runtime config reload (SIGHUP)
 - [x] Prometheus metrics exporter
 - [x] Grafana dashboard
 - [x] OpenWrt package feed
+- [x] Graceful shutdown (SIGTERM/SIGINT: drain pending TX block, log signal and packet count)
+- [x] Unit tests: 11 test suites covering gf256, codec, config, strategy (WRR), transport, rx, tx, metrics, crypto
 
 ---
 
