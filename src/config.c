@@ -41,6 +41,7 @@ int config_load(const char *path, struct gateway_config *cfg)
     strncpy(cfg->strategy_type, "fixed", sizeof(cfg->strategy_type) - 1);
     cfg->probe_interval_ms = 100;
     cfg->probe_loss_threshold = 0.3f;
+    cfg->ewma_alpha = 0.2f;
     cfg->listen_port = 7000;
     cfg->metrics_port   = 0;
     cfg->log_level      = 2;
@@ -126,6 +127,8 @@ int config_load(const char *path, struct gateway_config *cfg)
                     cfg->probe_interval_ms = atoi(val);
                 else if (!strcmp(key, "probe_loss_threshold"))
                     cfg->probe_loss_threshold = (float)atof(val);
+                else if (!strcmp(key, "ewma_alpha"))
+                    cfg->ewma_alpha = (float)atof(val);
             } else if (cur_path != NULL) {
                 if      (!strcmp(key, "interface"))
                     strncpy(cur_path->interface, val,

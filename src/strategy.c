@@ -4,7 +4,6 @@
 #include "strategy.h"
 #include "common.h"
 
-#define EWMA_ALPHA      0.2f
 #define MAX_REDUNDANCY  3.0f
 
 struct strategy_ctx {
@@ -14,6 +13,8 @@ struct strategy_ctx {
     char  type[16];
     float base_redundancy;
     float loss_threshold;
+    float ewma_alpha;
+    int   path_credit[MAX_PATHS];
 };
 
 struct strategy_ctx *strategy_init(const struct gateway_config *cfg)
@@ -27,6 +28,7 @@ struct strategy_ctx *strategy_init(const struct gateway_config *cfg)
     ctx->path_count      = cfg->path_count;
     ctx->base_redundancy = cfg->redundancy_ratio;
     ctx->loss_threshold  = cfg->probe_loss_threshold;
+    ctx->ewma_alpha      = (cfg->ewma_alpha > 0.0f) ? cfg->ewma_alpha : 0.2f;
     snprintf(ctx->type, sizeof(ctx->type), "%s", cfg->strategy_type);
 
     for (i = 0; i < cfg->path_count; i++) {
@@ -35,6 +37,8 @@ struct strategy_ctx *strategy_init(const struct gateway_config *cfg)
         ctx->paths[i].alive          = cfg->paths[i].enabled;
         ctx->paths[i].rtt_ms         = 5.0f;
         ctx->paths[i].loss_rate      = 0.0f;
+        ctx->path_credit[i]          = (int)roundf(cfg->paths[i].weight);
+        if (ctx->path_credit[i] < 1) ctx->path_credit[i] = 1;
     }
     return ctx;
 }
@@ -43,15 +47,51 @@ void strategy_free(struct strategy_ctx *ctx) { free(ctx); }
 
 int strategy_next_path(struct strategy_ctx *ctx)
 {
-    int i, idx;
+    int i, best, any_alive;
+
+    /* Check if any alive+enabled path exists. */
+    any_alive = 0;
     for (i = 0; i < ctx->path_count; i++) {
-        idx = (ctx->rr_idx + i) % ctx->path_count;
-        if (ctx->paths[idx].cfg.enabled && ctx->paths[idx].alive) {
-            ctx->rr_idx = (idx + 1) % ctx->path_count;
-            return idx;
+        if (ctx->paths[i].cfg.enabled && ctx->paths[i].alive) {
+            any_alive = 1;
+            break;
         }
     }
-    return -1;
+    if (!any_alive) return -1;
+
+    /* Refill credits if all alive+enabled paths are at or below 0. */
+    {
+        int need_refill = 1;
+        for (i = 0; i < ctx->path_count; i++) {
+            if (ctx->paths[i].cfg.enabled && ctx->paths[i].alive &&
+                ctx->path_credit[i] > 0) {
+                need_refill = 0;
+                break;
+            }
+        }
+        if (need_refill) {
+            for (i = 0; i < ctx->path_count; i++) {
+                if (ctx->paths[i].cfg.enabled && ctx->paths[i].alive) {
+                    ctx->path_credit[i] =
+                        (int)roundf(ctx->paths[i].weight_current);
+                    if (ctx->path_credit[i] < 1) ctx->path_credit[i] = 1;
+                }
+            }
+        }
+    }
+
+    /* Pick alive+enabled path with highest credit, breaking ties by index
+     * (lowest index first, which preserves original RR behaviour for equal
+     * weights when credits are always equal). */
+    best = -1;
+    for (i = 0; i < ctx->path_count; i++) {
+        if (!ctx->paths[i].cfg.enabled || !ctx->paths[i].alive) continue;
+        if (best == -1 || ctx->path_credit[i] > ctx->path_credit[best])
+            best = i;
+    }
+
+    ctx->path_credit[best]--;
+    return best;
 }
 
 int strategy_compute_n(struct strategy_ctx *ctx, int k)
@@ -95,12 +135,12 @@ void strategy_update_probe(struct strategy_ctx *ctx,
         float rtt_ms;
         p->probes_recv++;
         rtt_ms = (float)rtt_us / 1000.0f;
-        p->rtt_ms = EWMA_ALPHA * rtt_ms + (1.0f - EWMA_ALPHA) * p->rtt_ms;
+        p->rtt_ms = ctx->ewma_alpha * rtt_ms + (1.0f - ctx->ewma_alpha) * p->rtt_ms;
     }
 
     observed_loss = received ? 0.0f : 1.0f;
-    p->loss_rate = EWMA_ALPHA * observed_loss +
-                   (1.0f - EWMA_ALPHA) * p->loss_rate;
+    p->loss_rate = ctx->ewma_alpha * observed_loss +
+                   (1.0f - ctx->ewma_alpha) * p->loss_rate;
 
     /* Hysteresis: only flip alive state at 1x and 0.5x threshold. */
     if (p->loss_rate > ctx->loss_threshold)
@@ -126,6 +166,7 @@ void strategy_reload(struct strategy_ctx *ctx, const struct gateway_config *cfg)
 
     ctx->base_redundancy = cfg->redundancy_ratio;
     ctx->loss_threshold  = cfg->probe_loss_threshold;
+    ctx->ewma_alpha      = (cfg->ewma_alpha > 0.0f) ? cfg->ewma_alpha : 0.2f;
     snprintf(ctx->type, sizeof(ctx->type), "%s", cfg->strategy_type);
 
     /* Update per-path config while preserving runtime state. */
@@ -134,8 +175,13 @@ void strategy_reload(struct strategy_ctx *ctx, const struct gateway_config *cfg)
         ctx->paths[i].cfg.enabled = cfg->paths[i].enabled;
         ctx->paths[i].weight_current = cfg->paths[i].weight;
         /* If a path was just disabled via config, mark it dead immediately. */
-        if (!cfg->paths[i].enabled)
+        if (!cfg->paths[i].enabled) {
             ctx->paths[i].alive = false;
+        } else {
+            /* Update credit ceiling to reflect new weight. */
+            ctx->path_credit[i] = (int)roundf(cfg->paths[i].weight);
+            if (ctx->path_credit[i] < 1) ctx->path_credit[i] = 1;
+        }
     }
 
     LOG_INFO("strategy reloaded: type=%s redundancy=%.2f loss_thresh=%.2f",

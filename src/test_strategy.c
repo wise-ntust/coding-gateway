@@ -130,6 +130,68 @@ static void test_get_path_state_bounds(void)
     strategy_free(ctx);
 }
 
+static void test_wrr_two_paths_2_1(void)
+{
+    struct gateway_config cfg = make_cfg(2, 1.5f, 0.3f);
+    cfg.paths[0].weight = 2.0f;
+    cfg.paths[1].weight = 1.0f;
+    struct strategy_ctx *ctx = strategy_init(&cfg);
+
+    /* Over 6 calls, path 0 must be selected exactly 4 times, path 1 exactly 2. */
+    int counts[2] = {0, 0};
+    int j;
+    for (j = 0; j < 6; j++) {
+        int p = strategy_next_path(ctx);
+        assert(p == 0 || p == 1);
+        counts[p]++;
+    }
+    assert(counts[0] == 4);
+    assert(counts[1] == 2);
+    strategy_free(ctx);
+}
+
+static void test_wrr_equal_weights_three(void)
+{
+    /* Equal weights must produce the same sequence as the old RR: 0,1,2,0,1,2 */
+    struct gateway_config cfg = make_cfg(3, 1.5f, 0.3f);
+    struct strategy_ctx *ctx = strategy_init(&cfg);
+    assert(strategy_next_path(ctx) == 0);
+    assert(strategy_next_path(ctx) == 1);
+    assert(strategy_next_path(ctx) == 2);
+    assert(strategy_next_path(ctx) == 0);
+    assert(strategy_next_path(ctx) == 1);
+    assert(strategy_next_path(ctx) == 2);
+    strategy_free(ctx);
+}
+
+static void test_wrr_dead_path_skipped(void)
+{
+    /* Weights [2, 1, 1], path 1 goes dead. Only paths 0 and 2 are used.
+     * Over 6 calls: path 0 selected 4 times, path 2 selected 2 times. */
+    struct gateway_config cfg = make_cfg(3, 1.5f, 0.3f);
+    cfg.paths[0].weight = 2.0f;
+    cfg.paths[1].weight = 1.0f;
+    cfg.paths[2].weight = 1.0f;
+    struct strategy_ctx *ctx = strategy_init(&cfg);
+
+    /* Kill path 1 via probe loss. */
+    int i;
+    for (i = 0; i < 20; i++)
+        strategy_update_probe(ctx, 1, 0, false);
+
+    int counts[3] = {0, 0, 0};
+    int j;
+    for (j = 0; j < 6; j++) {
+        int p = strategy_next_path(ctx);
+        assert(p == 0 || p == 2);
+        counts[p]++;
+    }
+    assert(counts[0] == 4);
+    assert(counts[1] == 0);
+    assert(counts[2] == 2);
+    strategy_free(ctx);
+}
+
 static void test_reload_preserves_runtime(void)
 {
     struct gateway_config cfg = make_cfg(2, 1.5f, 0.3f);
@@ -161,6 +223,9 @@ int main(void)
     test_probe_out_of_bounds();
     test_get_path_state_bounds();
     test_reload_preserves_runtime();
+    test_wrr_two_paths_2_1();
+    test_wrr_equal_weights_three();
+    test_wrr_dead_path_skipped();
     printf("strategy: all tests passed\n");
     return 0;
 }

@@ -26,6 +26,7 @@ struct gateway_config {
     char   strategy_type[16];   /* "fixed", "weighted", "adaptive" */
     int    probe_interval_ms;
     float  probe_loss_threshold;
+    float  ewma_alpha;
     int    listen_port;          /* UDP port this node binds for incoming datagrams */
     struct path_config paths[MAX_PATHS];
     int    path_count;
