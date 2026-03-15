@@ -68,6 +68,9 @@ build/test_transport: src/test_transport.c build/config.o | build
 build/test_rx: src/test_rx.c build/rx.o build/codec.o build/gf256.o build/tun.o build/metrics.o build/config.o build/crypto.o | build
 	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
 
+build/test_tx: src/test_tx.c build/tx.o build/codec.o build/gf256.o build/strategy.o build/config.o build/crypto.o build/transport.o build/metrics.o build/tun.o | build
+	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
+
 build/test_config_edge: src/test_config_edge.c build/config.o | build
 	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
 
