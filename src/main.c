@@ -19,10 +19,11 @@
 
 static volatile sig_atomic_t running = 1;
 static volatile sig_atomic_t reload_flag = 0;
+static volatile sig_atomic_t g_sig_received = 0;
 
 static void sig_handler(int sig)
 {
-    (void)sig;
+    g_sig_received = sig;
     running = 0;
 }
 
@@ -280,10 +281,14 @@ do_reload:
         }
     }
 
-    LOG_INFO("shutting down");
+    LOG_INFO("received signal %d (%s), shutting down",
+             (int)g_sig_received,
+             g_sig_received == SIGTERM ? "SIGTERM" : "SIGINT");
 
-    if (is_tx && tx.pkt_count > 0)
+    if (is_tx && tx.pkt_count > 0) {
+        LOG_INFO("draining TX block: %d pending packet(s)", tx.pkt_count);
         tx_block_flush(&tx, tctx, sctx, cfg.k, &crypto);
+    }
 
     if (metrics_fd >= 0) close(metrics_fd);
     strategy_free(sctx);
