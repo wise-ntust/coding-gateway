@@ -30,3 +30,6 @@ jobs:
 
       - name: Diff hygiene
         run: git diff --check
+
+      - name: README evaluation inventory sync
+        run: ./scripts/eval/check_readme_sync.sh

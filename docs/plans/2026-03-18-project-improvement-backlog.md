@@ -358,9 +358,14 @@ git commit -m "eval: add timeout-rate-k parameter sweep"
 
 **Files:**
 - Modify: `README.md`
-- Optionally create: `docs/` or `scripts/eval/results/` hardware-specific notes/artifacts if needed
+- Create: `docs/hardware/validation-checklist.md`
+- Create: `docs/hardware/openwrt-validation-template.md`
+- Create: `docs/hardware/zedboard-validation-template.md`
+- Optionally create: `scripts/eval/results/` hardware-specific notes/artifacts if needed
 
 - [ ] **Step 1: Pick the minimum viable hardware matrix**
+
+Prerequisite note: use the hardware checklist/template docs as the canonical capture format before collecting any new hardware evidence.
 
 At minimum:
 - native x86 localhost baseline

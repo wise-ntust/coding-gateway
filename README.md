@@ -384,24 +384,28 @@ Finding the optimal ratio — tradeoff between bandwidth overhead and loss resil
 
 **Recommended: ratio=2.0** for mmWave environments (loss typically 20-40%). It provides 82% success at 40% loss with only 2× bandwidth overhead. ratio=3.0 gives 95% at 40% loss but triples bandwidth.
 
+<!-- BEGIN GENERATED: eval-inventory -->
 ### Additional Experiments
+
+> This index is generated from the tracked evaluation script inventory. Detailed result sections below remain manually curated.
 
 | Experiment | Script | Description |
 |-----------|--------|-------------|
 | E2 | `e2_throughput.sh` | TCP throughput vs loss: throughput collapses rapidly; ARQ does not recover high-loss performance |
 | E3 | `e3_blockage_recovery.sh` | Blockage recovery latency (single-path) |
-| E3-MP | `e3_multipath_blockage.sh` | Multi-path blockage: **0 ms recovery gap** for all durations |
-| E4 | `e4_adaptive_step.sh` | Loss step-injection trace captured; quantitative adaptive response extraction is currently incomplete |
-| E5 | `e5_overhead.sh` | Bandwidth overhead ratio: 1.483× (theoretical: 1.5×) |
+| E3-MP | `e3_multipath_blockage.sh` | Multi-path blockage: 0 ms recovery gap for all tested blockage durations |
+| E4 | `e4_adaptive_step.sh` | Loss step-injection trace and adaptive runtime behavior |
+| E5 | `e5_overhead.sh` | Bandwidth overhead ratio: measured wire overhead vs configured coding ratio |
 | E6 | `results/e6_arq_*` | FEC-only vs FEC+ARQ decode success: ARQ helps little at low loss and hurts at high loss |
 | E8-R | `e8_k_sweep_repeated.sh` | k-value sweep, 30 reps: latency vs decode success at 20% loss |
-| E10 | `e10_tripath_degradation.sh` | Path degradation: 2→1→0 alive paths |
-| E12 | `e12_mptcp_compare.sh` | MPTCP-equivalent (no FEC) vs FEC-2×: success rate comparison |
-| E13 | `e13_path_count_sweep.sh` | Path-count sweep: N=2,3,4 × mptcp_equiv/fec_2x × loss 0–40% |
-| E14 | `e14_path_degradation.sh` | Path degradation: N=3,4 topologies — results anomalous, TBD |
-| E15 | `e15_blockage_recovery.sh` | Multi-path blockage recovery: N=3,4 paths, 0 ms gap ≥100 ms blockage |
-| E16 | `e16_k_multipath_sweep.sh` | k-sweep (k=1,2,4) × N-path (2,3,4) × ratio=2.0: symmetric + asymmetric loss |
-| E17 | `e17_iperf_4node.sh` | iperf3 4-node end-to-end throughput: FEC vs no-FEC, 0–40% path loss |
+| E10 | `e10_tripath_degradation.sh` | Path degradation: 2->1->0 alive paths |
+| E12 | `e12_mptcp_compare.sh` | MPTCP-equivalent (no coding) vs FEC-2x: success rate comparison |
+| E13 | `e13_path_count_sweep.sh` | Path-count sweep: N=2,3,4 x mptcp_equiv/fec_2x x loss 0-40% |
+| E14 | `e14_path_degradation.sh` | Path degradation: N=3,4 topologies; interpretation remains methodology-sensitive |
+| E15 | `e15_blockage_recovery.sh` | Multi-path blockage recovery: N=3,4 paths, 0 ms gap for >=100 ms blockage |
+| E16 | `e16_k_multipath_sweep.sh` | k-sweep (k=1,2,4) x N-path (2,3,4) x ratio=2.0 under symmetric/asymmetric loss |
+| E17 | `e17_iperf_4node.sh` | iperf3 4-node end-to-end throughput: FEC vs no-FEC, 0-40% path loss |
+<!-- END GENERATED: eval-inventory -->
 
 #### E8-R: k-value sweep (30 reps, 20% loss, ratio=2.0)
 
@@ -610,6 +614,16 @@ scp coding-gateway root@zedboard:/usr/local/bin/
 make TARGET=openwrt OPENWRT_SDK=/path/to/sdk
 scp coding-gateway root@router:/usr/local/bin/
 ```
+
+### Hardware Validation Templates
+
+Future hardware evidence should follow the templates in:
+
+- `docs/hardware/validation-checklist.md`
+- `docs/hardware/openwrt-validation-template.md`
+- `docs/hardware/zedboard-validation-template.md`
+
+These documents define the minimum matrix, required artifacts, and reporting format for OpenWrt and ZedBoard/OpenWifi validation. Until those templates are filled with real runs, hardware support should be treated as implemented deployment support rather than fully documented hardware validation evidence.
 
 ---
 

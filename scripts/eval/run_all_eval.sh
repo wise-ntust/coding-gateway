@@ -21,3 +21,7 @@ if [ "$(ls -A "$RESULTS_DIR" 2>/dev/null)" ]; then
 else
     echo "  (no results produced)"
 fi
+
+echo ""
+echo "If README inventory changed, refresh it with:"
+echo "  python3 scripts/eval/render_readme_eval.py README.md"
