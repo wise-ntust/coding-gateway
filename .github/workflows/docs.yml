@@ -1,0 +1,32 @@
+name: Docs
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "README.md"
+      - "AGENTS.md"
+      - "CLAUDE.md"
+      - "rules/**"
+      - "docs/**"
+      - "scripts/eval/results/**"
+      - ".github/workflows/docs.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "README.md"
+      - "AGENTS.md"
+      - "CLAUDE.md"
+      - "rules/**"
+      - "docs/**"
+      - "scripts/eval/results/**"
+      - ".github/workflows/docs.yml"
+
+jobs:
+  docs-checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Diff hygiene
+        run: git diff --check

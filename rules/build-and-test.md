@@ -13,3 +13,8 @@
 - Loopback tests (`config/loopback-*.conf`) must pass before marking a codec change complete.
 - Use `drop_simulation_rate` to simulate shard loss and verify redundancy behavior.
 - If a change is non-code and does not affect codec behavior, the codec-specific test requirements above do not apply.
+- CI is split into three gate types:
+  - `Docs`: documentation/rules/result-summary changes
+  - `Native`: native build plus unit tests for code-affecting changes
+  - `Docker Integration`: end-to-end Docker regression tests for runtime and integration changes
+- Keep the workflow scope narrow with path filters so docs-only changes do not trigger runtime-heavy verification unnecessarily.

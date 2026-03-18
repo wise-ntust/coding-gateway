@@ -1,0 +1,31 @@
+name: Docker Integration
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "src/**"
+      - "include/**"
+      - "scripts/test_*.sh"
+      - "scripts/run-all-tests.sh"
+      - "config/docker-*.conf"
+      - ".github/workflows/docker-integration.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "src/**"
+      - "include/**"
+      - "scripts/test_*.sh"
+      - "scripts/run-all-tests.sh"
+      - "config/docker-*.conf"
+      - ".github/workflows/docker-integration.yml"
+
+jobs:
+  docker-suite:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run Docker integration suite
+        run: ./scripts/run-all-tests.sh
