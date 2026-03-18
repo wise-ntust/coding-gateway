@@ -34,6 +34,8 @@ Repository-specific instructions in this file and `./rules/` override generic ag
 3. Do not skip files because the current task looks small or unrelated.
 4. When multiple files apply, the more specific rule wins.
 5. Keep `README.md`, this file, and the relevant rule files in sync when requirements change.
+6. Treat `README.md` as the repository's canonical human-readable summary of current features, tests, experiments, limitations, and supported workflows.
+7. Do not leave new valid evaluation results or changed behavior reflected only in `scripts/eval/results/`, commit history, or code; propagate them into `README.md`.
 
 ## Compatibility Notes
 

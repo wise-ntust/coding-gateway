@@ -247,7 +247,7 @@ No `./configure`. No `cmake`. No dependency resolution. A single `Makefile` with
 make test
 ```
 
-Nine test suites verify core correctness:
+Ten test suites verify core correctness:
 
 | Test | What it verifies |
 |------|-----------------|
@@ -257,6 +257,7 @@ Nine test suites verify core correctness:
 | `test_strategy` | Round-robin, adaptive scaling, EWMA/hysteresis, reload, edge cases (11 cases) |
 | `test_transport` | Wire header packing, protocol constants, timestamp encode/decode (7 cases) |
 | `test_rx` | IPv4/IPv6 packet length extraction, padding strip, edge cases (13 cases) |
+| `test_tx` | Block assembly, timeout flush, padding, crypto/no-path flush safety |
 | `test_config_edge` | Empty file, unknown sections, value clamping, whitespace (12 cases) |
 | `test_metrics` | Latency buckets, histogram recording, counter increments (6 cases) |
 | `test_crypto` | XOR encrypt/decrypt roundtrip, nonce/key differentiation, key parsing (8 cases) |
@@ -303,6 +304,34 @@ Experiments are in `scripts/eval/`. Each repeated experiment runs **30 repetitio
 
 Without FEC, the tunnel collapses at 20% loss (3.3% success) and is completely unusable at 30%+. With FEC (redundancy_ratio=1.5), the same tunnel maintains 91% success at 30% loss — a **91 percentage point improvement**.
 
+### E2: TCP Throughput vs Loss
+
+Server-side `iperf3` measurements (`scripts/eval/results/e2_throughput_fec_only.csv` and `scripts/eval/results/e2_throughput_arq.csv`) show that throughput collapses rapidly as shard loss rises, and ARQ does not recover the situation.
+
+| Loss | FEC only | FEC + ARQ |
+|------|----------|-----------|
+| 0% | **101.57 Mbps** | 53.15 Mbps |
+| 10% | **10.43 Mbps** | 7.32 Mbps |
+| 20% | 2.09 Mbps | 2.09 Mbps |
+| 30% | 1.05 Mbps | 1.05 Mbps |
+| 40% | 0.00 Mbps | 0.00 Mbps |
+| 50% | 0.00 Mbps | 0.00 Mbps |
+
+Under sustained loss, TCP throughput falls much faster than ping-based decode success because TCP reacts poorly to burst loss and delay variation. ARQ adds overhead but does not restore throughput at 20%+ loss.
+
+### E3 / E3-MP: Blockage Recovery
+
+Single-path blockage produces visible recovery gaps. The dual-path coded topology absorbs the same blockage with no observed ping loss in these runs.
+
+| Blockage | Single-path lost pings | Single-path gap | Multi-path lost pings | Multi-path gap |
+|----------|------------------------|-----------------|-----------------------|----------------|
+| 50 ms | 2 | 200 ms | 0 | 0 ms |
+| 100 ms | 2 | 200 ms | 0 | 0 ms |
+| 200 ms | 3 | 300 ms | 0 | 0 ms |
+| 500 ms | 6 | 600 ms | 0 | 0 ms |
+
+This is the clearest qualitative result in the repo: a blocked single path creates a measurable stall, while coded multi-path forwarding keeps the tunnel continuously usable under the same induced outage.
+
 ### E7: Burst vs Random Loss (N=30)
 
 FEC performs better under bursty loss (corr=25%) than uniform random loss at moderate loss rates — consistent with mmWave blockage characteristics where loss events are temporally correlated.
@@ -315,6 +344,8 @@ FEC performs better under bursty loss (corr=25%) than uniform random loss at mod
 | 40% | 66.33 ± 11.61 | 67.83 ± 9.72 |
 | 50% | 44.33 ± 10.47 | 29.33 ± 25.55 |
 
+The repeated summary CSV also contains `corr=50%` and `corr=75%` rows, but those are all-zero artifacts in the current dataset and are not used for conclusions in this README.
+
 ### E9: Tunnel Latency Overhead (N=30)
 
 | Mode | Mean ± Std |
@@ -324,6 +355,16 @@ FEC performs better under bursty loss (corr=25%) than uniform random loss at mod
 | **Coding overhead** | **~27 ms** |
 
 The overhead is dominated by `block_timeout_ms` (block assembly wait), not GF(2⁸) computation.
+
+### E5: Bandwidth Overhead Ratio
+
+Measured wire overhead for the default FEC configuration is close to the theoretical `redundancy_ratio=1.5`.
+
+| TUN TX bytes | Wire TX bytes | Measured overhead |
+|--------------|---------------|-------------------|
+| 38,226,912 | 56,691,323 | **1.483×** |
+
+The measured overhead is within about 1.1% of the theoretical 1.5× expansion, indicating the wire format and shard scheduling add little overhead beyond the coding ratio itself.
 
 ### E11: Redundancy Ratio Sweep (N=30)
 
@@ -347,9 +388,12 @@ Finding the optimal ratio — tradeoff between bandwidth overhead and loss resil
 
 | Experiment | Script | Description |
 |-----------|--------|-------------|
+| E2 | `e2_throughput.sh` | TCP throughput vs loss: throughput collapses rapidly; ARQ does not recover high-loss performance |
 | E3 | `e3_blockage_recovery.sh` | Blockage recovery latency (single-path) |
 | E3-MP | `e3_multipath_blockage.sh` | Multi-path blockage: **0 ms recovery gap** for all durations |
+| E4 | `e4_adaptive_step.sh` | Loss step-injection trace captured; quantitative adaptive response extraction is currently incomplete |
 | E5 | `e5_overhead.sh` | Bandwidth overhead ratio: 1.483× (theoretical: 1.5×) |
+| E6 | `results/e6_arq_*` | FEC-only vs FEC+ARQ decode success: ARQ helps little at low loss and hurts at high loss |
 | E8-R | `e8_k_sweep_repeated.sh` | k-value sweep, 30 reps: latency vs decode success at 20% loss |
 | E10 | `e10_tripath_degradation.sh` | Path degradation: 2→1→0 alive paths |
 | E12 | `e12_mptcp_compare.sh` | MPTCP-equivalent (no FEC) vs FEC-2×: success rate comparison |
@@ -369,6 +413,18 @@ Finding the optimal ratio — tradeoff between bandwidth overhead and loss resil
 | 8 | 27.9 | 0.9 | 92.8 | 4.8 |
 
 k=4 shows high variance (std=44.5%) indicating instability in the Docker test environment — a bimodal distribution between full success and complete failure. k=1 achieves the best success rate (96.3%) with lowest RTT; k=2 and k=8 add grouping latency overhead. **Recommendation: k=1 with block_timeout_ms tuning for latency-sensitive workloads.**
+
+#### E10: Path degradation with 30% loss on surviving paths
+
+This is a simple two-path degradation experiment rather than the later N-path repeated sweeps.
+
+| Alive paths | Success rate |
+|------------|--------------|
+| 2 | 97.0% |
+| 1 | 100.0% |
+| 0 | 0.0% |
+
+With one healthy surviving path, the tunnel remained usable in this run despite 30% loss on that path. With both paths blocked, connectivity dropped to zero immediately.
 
 #### E12: MPTCP-equivalent comparison (30 reps)
 
@@ -496,6 +552,15 @@ At 10% path loss, FEC 2× fully absorbs the loss (0% tunnel loss) while no-FEC p
 
 NACK-based ARQ (Automatic Repeat reQuest) was implemented and evaluated in a controlled experiment (E6). Results showed ARQ hurts more than it helps in the target scenario:
 
+| Loss | FEC only | FEC + ARQ | ARQ delta |
+|------|----------|-----------|-----------|
+| 0% | 100% | 100% | 0 pp |
+| 10% | 97% | 100% | +3 pp |
+| 20% | 85% | 87% | +2 pp |
+| 30% | **85%** | 60% | -25 pp |
+| 40% | **60%** | 47% | -13 pp |
+| 50% | **52%** | 42% | -10 pp |
+
 - **Low loss (10–20%):** marginal improvement (+2–3%)
 - **High loss (30–50%):** significant degradation (−10–25%)
 
@@ -514,7 +579,7 @@ make test
 ### Step 2 — End-to-end test with Docker Compose
 
 ```bash
-./scripts/run-all-tests.sh    # all 7 integration tests
+./scripts/run-all-tests.sh    # all 8 integration tests
 ./scripts/test-docker.sh      # or just basic connectivity
 ```
 
@@ -582,7 +647,7 @@ To import the dashboard, go to Grafana → Dashboards → Import and upload `das
 - [x] Grafana dashboard
 - [x] OpenWrt package feed
 - [x] Graceful shutdown (SIGTERM/SIGINT: drain pending TX block, log signal and packet count)
-- [x] Unit tests: 11 test suites covering gf256, codec, config, strategy (WRR), transport, rx, tx, metrics, crypto
+- [x] Unit tests: 10 test suites covering gf256, codec, config, strategy (WRR), transport, rx, tx, metrics, crypto
 
 ---
 

@@ -1,5 +1,8 @@
 # Documentation Sync
 
-- 每次完成動作（feature、bugfix、實驗、移除功能）後，檢查 `README.md` 是否反映最新狀態。
-- 實驗結果、測試清單、config 範例、路線圖都必須與程式碼同步。
-- 如果有新的實驗數據，尤其是 30-rep 統計結果，更新 `README.md` 的 Evaluation 區段。
+- `README.md` 是這個 repo 的最新人工總覽與 canonical summary。
+- 每次完成動作（feature、bugfix、實驗、移除功能、規則調整）後，必須檢查並更新 `README.md`，讓它反映最新狀態。
+- 實驗結果、測試清單、config 範例、操作方式、限制、路線圖都必須與程式碼同步。
+- 如果 `scripts/eval/results/` 出現新的有效結果，尤其是新的 summary CSV、重複實驗統計、或可支持結論的單次量測，必須同步整理進 `README.md` 的 Evaluation 區段。
+- 有方法學限制或異常值的結果也要在 `README.md` 記錄，但必須明確標示限制，不能寫成定論。
+- 不要讓 `README.md` 落後於 `scripts/eval/results/`、`rules/roadmap.md` 或目前可執行的測試入口。
