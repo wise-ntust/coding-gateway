@@ -631,6 +631,19 @@ Interpretation:
 - `sysctl net.ipv4.ip_forward` should be readable and writable by root.
 - `CONFIG_TUN=y` or `CONFIG_TUN=m` confirms kernel TUN support.
 
+Shortest on-board smoke test:
+
+```bash
+chmod +x /usr/local/bin/coding-gateway
+/usr/local/bin/coding-gateway --config /root/tx.conf &
+sleep 2
+ip link show tun0
+curl -fsS http://127.0.0.1:9090/metrics | head
+pkill coding-gateway
+```
+
+This is enough to confirm the binary starts, the TUN interface comes up, and the metrics endpoint responds. Once the ZedBoard is connected, I can run this sequence directly and extend it to an end-to-end tunnel test.
+
 ```bash
 # ZedBoard
 make TARGET=zedboard

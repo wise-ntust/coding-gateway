@@ -37,6 +37,7 @@
 
 ## Smoke Validation
 
+- Short smoke command:
 - Binary launch result:
 - TUN setup result:
 - Route setup result:
