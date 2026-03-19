@@ -605,6 +605,13 @@ iperf3 -c 10.0.0.2  # send through tunnel
 
 Cross-compile, copy the binary and config, run. The deployment procedure is identical to Step 3.
 
+For ZedBoard, the reference platform is OpenWifi:
+
+- OpenWifi repo: https://github.com/open-sdr/openwifi
+- Use the OpenWifi installation flow to prepare the ZedBoard Linux/FPGA/driver environment first.
+- After the board boots into the OpenWifi-provided Linux environment, deploy `coding-gateway` as a normal userspace binary with its config files.
+- In other words, `coding-gateway` does not replace the board support stack; it runs on top of the OpenWifi-based ZedBoard system.
+
 ```bash
 # ZedBoard
 make TARGET=zedboard
