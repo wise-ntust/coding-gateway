@@ -611,6 +611,25 @@ For ZedBoard, the reference platform is OpenWifi:
 - Use the OpenWifi installation flow to prepare the ZedBoard Linux/FPGA/driver environment first.
 - After the board boots into the OpenWifi-provided Linux environment, deploy `coding-gateway` as a normal userspace binary with its config files.
 - In other words, `coding-gateway` does not replace the board support stack; it runs on top of the OpenWifi-based ZedBoard system.
+- Before treating the board as deployment-ready, verify the minimum userspace prerequisites that `coding-gateway` needs: TUN support, UDP sockets, routing tools, and controllable `net.ipv4.ip_forward`.
+
+Recommended preflight checks on the ZedBoard:
+
+```bash
+uname -a
+ls -l /dev/net/tun
+ip link
+ip route
+sysctl net.ipv4.ip_forward
+zcat /proc/config.gz | grep CONFIG_TUN
+```
+
+Interpretation:
+
+- `ls -l /dev/net/tun` should show the TUN device node.
+- `ip link` and `ip route` should work, confirming interface and routing control is available.
+- `sysctl net.ipv4.ip_forward` should be readable and writable by root.
+- `CONFIG_TUN=y` or `CONFIG_TUN=m` confirms kernel TUN support.
 
 ```bash
 # ZedBoard

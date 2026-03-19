@@ -17,6 +17,17 @@
 - FPGA / image details:
 - Any local patches:
 
+## Platform Capability Check
+
+- `uname -a`:
+- `ls -l /dev/net/tun`:
+- `ip link`:
+- `ip route`:
+- `sysctl net.ipv4.ip_forward`:
+- `zcat /proc/config.gz | grep CONFIG_TUN`:
+- UDP userspace socket test:
+- Notes on missing tools or kernel options:
+
 ## Topology
 
 - Radio / path mapping:
